@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "Mkh​​andiAiScan".replace("\u200b", "")
+rootProject.name = "MKHANDIAIScan"
 include(":app")
