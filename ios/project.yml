@@ -1,0 +1,25 @@
+name: MKHANDIAIScan
+options:
+  bundleIdPrefix: com.mkhandi
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  MKHANDIAIScan:
+    type: application
+    platform: iOS
+    sources:
+      - path: MKHANDIAIScanApp.swift
+      - path: ContentView.swift
+    info:
+      path: Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mkhandi.aiscan.ios
+        PRODUCT_NAME: MKHANDI AI SCAN
+        INFOPLIST_KEY_CFBundleDisplayName: MKHANDI AI SCAN
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Select chart screenshots for MKHANDI AI SCAN analysis.
+        GENERATE_INFOPLIST_FILE: YES
