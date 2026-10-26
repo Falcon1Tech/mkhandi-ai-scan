@@ -25,35 +25,48 @@ async function readBody(req) {
 }
 
 function parseMultipart(buffer, contentType) {
-  const match = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType || "");
-  if (!match) throw Object.assign(new Error("Expected a multipart chart upload."), { status: 400 });
+  const match = /boundary=(?:"([^"]+)"|([^;\\s]+))/i.exec(contentType || "");
+  if (!match) throw Object.assign(new Error("Expected a multipart chart upload. Please retry the upload."), { status: 400 });
   const boundary = Buffer.from("--" + (match[1] || match[2]).trim());
-  const fields = {};
+  const fields = Object.create(null);
   let cursor = 0;
+
+  // Parse each MIME part by its headers, keeping image bytes as Buffer data.
   while (cursor < buffer.length) {
-    let start = buffer.indexOf(boundary, cursor);
-    if (start < 0) break;
-    start += boundary.length;
-    if (buffer.subarray(start, start + 2).toString() === "--") break;
-    if (buffer.subarray(start, start + 2).toString() === "\r\n") start += 2;
-    const headerEnd = buffer.indexOf(Buffer.from("\r\n\r\n"), start);
+    const marker = buffer.indexOf(boundary, cursor);
+    if (marker < 0) break;
+    let partStart = marker + boundary.length;
+    if (buffer.subarray(partStart, partStart + 2).toString() === "--") break;
+    if (buffer.subarray(partStart, partStart + 2).toString() === "\\r\\n") partStart += 2;
+
+    const headerEnd = buffer.indexOf(Buffer.from("\\r\\n\\r\\n"), partStart);
     if (headerEnd < 0) break;
-    const headers = buffer.subarray(start, headerEnd).toString("utf8");
-    const next = buffer.indexOf(boundary, headerEnd + 4);
-    if (next < 0) break;
-    let end = next;
-    if (buffer.subarray(end - 2, end).toString() === "\r\n") end -= 2;
-    const disposition = /content-disposition:\s*form-data;[^\r\n]*name="([^"]+)"(?:;\s*filename="([^"]*)")?/i.exec(headers);
-    if (disposition) {
-      const name = disposition[1];
-      const filename = disposition[2];
-      const data = buffer.subarray(headerEnd + 4, end);
-      if (filename !== undefined) {
-        const typeMatch = /content-type:\s*([^\r\n]+)/i.exec(headers);
-        fields[name] = { filename, contentType: (typeMatch?.[1] || "application/octet-stream").trim().toLowerCase(), data: Buffer.from(data) };
-      } else fields[name] = data.toString("utf8");
+    const nextBoundary = buffer.indexOf(boundary, headerEnd + 4);
+    if (nextBoundary < 0) break;
+
+    const headers = buffer.subarray(partStart, headerEnd).toString("latin1");
+    let dataEnd = nextBoundary;
+    if (buffer.subarray(dataEnd - 2, dataEnd).toString() === "\\r\\n") dataEnd -= 2;
+    const data = buffer.subarray(headerEnd + 4, dataEnd);
+
+    const disposition = headers.split(/\\r?\\n/).find(line => /^content-disposition:/i.test(line)) || "";
+    const nameMatch = /(?:^|;)\\s*name="([^"]+)"/i.exec(disposition);
+    const filenameMatch = /(?:^|;)\\s*filename="([^"]*)"/i.exec(disposition);
+    if (nameMatch) {
+      const name = nameMatch[1];
+      if (filenameMatch) {
+        const typeLine = headers.split(/\\r?\\n/).find(line => /^content-type:/i.test(line)) || "";
+        const typeMatch = /^content-type:\\s*([^\\r\\n]+)/i.exec(typeLine);
+        fields[name] = {
+          filename: filenameMatch[1],
+          contentType: (typeMatch?.[1] || "application/octet-stream").trim().toLowerCase(),
+          data: Buffer.from(data)
+        };
+      } else {
+        fields[name] = data.toString("utf8");
+      }
     }
-    cursor = next;
+    cursor = nextBoundary;
   }
   return fields;
 }
