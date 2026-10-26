@@ -58,6 +58,105 @@ body{
 @media(max-width:1050px){.dash-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.dash-layout{grid-template-columns:1fr 1fr}.dash-layout .dash-sentiment{grid-column:1/-1}.dashboard-top{grid-template-columns:1fr 1fr}.dash-online{grid-column:1/-1}}
 @media(max-width:650px){.dashboard-top{grid-template-columns:1fr}.dash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-layout,.dash-lower{grid-template-columns:1fr}.dash-layout .dash-sentiment{grid-column:auto}.dash-signal-values{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-daily{grid-template-columns:repeat(3,1fr)}.dash-welcome h2{font-size:18px}.dash-table{min-width:600px}}
 
+
+/* MKHANDI futuristic interface skin — presentation only; existing analysis logic is preserved */
+:root{
+ --red:#ff1238;--red-deep:#c80025;--ink:#eef3ff;--muted:#91a2bd;
+ --bg:#070b15;--card:#0e1626;--line:#25334a;--green:#27e0a3;--amber:#ffc45c;--blue:#70b7ff;
+ --red-wash:rgba(255,18,56,.12);
+}
+html{background:#070b15;color-scheme:dark}
+body{background:radial-gradient(ellipse at 8% -10%,rgba(255,18,56,.16),transparent 34%),radial-gradient(ellipse at 95% 10%,rgba(34,112,180,.12),transparent 28%),#070b15;color:var(--ink)}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.16;z-index:0;background-image:linear-gradient(rgba(103,145,190,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(103,145,190,.08) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,black,transparent 90%)}
+.app{position:relative;z-index:1;max-width:1500px;padding:20px}
+.top{padding:12px 15px;border:1px solid #29364b;border-radius:18px;background:rgba(9,15,28,.88);box-shadow:0 12px 40px #0005,inset 0 1px #ffffff0c;backdrop-filter:blur(14px)}
+.mark{background:#080d18;border-color:#e8efff;border-right-color:var(--red);box-shadow:0 0 0 4px #ff12381b,0 0 24px #ff12382b}
+.brand h1,.brand strong,.brand b{color:#f6f8ff}
+.online{background:#101c2b;color:#eaf4ff;border-color:#2b4558}
+.online .dot{background:var(--green);box-shadow:0 0 0 4px #27e0a31c,0 0 14px #27e0a3}
+.layout{gap:15px}
+.side{background:linear-gradient(180deg,#101827f5,#0a111ef5);border:1px solid #2b394f;border-radius:20px;box-shadow:0 16px 45px #0004;backdrop-filter:blur(12px)}
+.nav{color:#b9c6dc;border-radius:11px;transition:all .18s ease}
+.nav:hover{background:#ff123814;color:#fff;box-shadow:inset 3px 0 var(--red)}
+.nav.active{background:linear-gradient(100deg,#ff1238,#b90028);color:#fff;box-shadow:0 0 0 1px #ff71881c,0 7px 22px #ff12382c}
+.main{min-width:0}
+.panel,.hero,.dash-card,.dash-welcome,.dash-status,.dash-online,.dash-kpi,.mini,.metric,.fact,.gate,.mtf,.ai-card,.ai-section,.candidate,.watch,.slot,.historythumb,.share-card-preview,.market-picker,.market-list,.market-item,.rank,.labgrid,.signalbox,.table,.row{
+ background:linear-gradient(145deg,rgba(17,28,46,.97),rgba(10,17,30,.97));color:var(--ink);border-color:#2a3b54;box-shadow:0 12px 28px #0002,inset 0 1px #ffffff08
+}
+.panel,.hero,.dash-card{border-radius:18px}
+.hero{position:relative;overflow:hidden;border-color:#653044;background:linear-gradient(130deg,#111c2e 0%,#171322 68%,#260d1b 100%)}
+.hero:after{content:"";position:absolute;right:-85px;top:-120px;width:260px;height:260px;border:26px solid #ff123817;border-radius:50%;pointer-events:none}
+.eyebrow,.section-title{color:#ff5571}
+.sub,.muted,.dash-welcome p,.dash-status small,.dash-online small,.dash-card-head small,.dash-signal-sub,.dash-empty,.dash-broker p,.sentiment-label{color:#91a2bd}
+h1,h2,h3,h4,label,strong,b{color:inherit}
+input,select,textarea{background:#080f1d!important;color:#f1f5ff!important;border:1px solid #31425b!important;border-radius:10px!important}
+input::placeholder,textarea::placeholder{color:#6f8099}
+.btn,.primary,.scanbtn,.dash-action{border:1px solid #ff4763;background:linear-gradient(100deg,#ff1238,#bf0029);color:#fff;box-shadow:0 0 20px #ff12381e;transition:transform .16s ease,box-shadow .16s ease}
+.btn:hover,.primary:hover,.scanbtn:hover,.dash-action:hover{transform:translateY(-1px);box-shadow:0 0 26px #ff12384a}
+.btn:not(.red):not(.dark){background:#111d30;border-color:#334760;color:#e8efff}
+.dark{background:linear-gradient(120deg,#ff1238,#b80027);color:#fff}
+.tf,.badge,.status-pill,.dash-chip,.lock-pill{border-color:#34445d}
+.tf{background:#0b1424;color:#c8d4e7}
+.tf.active,.tf.selected{background:var(--red);color:#fff;border-color:#ff4a65;box-shadow:0 0 16px #ff12383a}
+.slot{border-style:dashed}
+.slot.ready{border-color:#ff3858;background:#ff123812;box-shadow:inset 0 0 0 1px #ff12381b}
+.slot.ready strong,.redtxt{color:#ff5571}
+.status{background:linear-gradient(110deg,#170d1a,#35101c);border-left:4px solid var(--red);color:#ffeaf0}
+.feedline{background:#111d30;border-color:#2e405b;color:#dce7f9}
+.signalbox{border-top:3px solid var(--red)}
+.signal-title,.signal-bias{color:#f4f7ff}
+.buy,.badge.buy,.dash-badge.buy{background:#0e352f;color:#4df0b9;border-color:#1b765f}
+.sell,.badge.sell,.dash-badge.sell{background:#3a1422;color:#ff6f88;border-color:#7c2a41}
+.wait,.neutral,.badge.wait{background:#2b2518;color:#ffd27b}
+.green{color:#27e0a3}
+.amber{color:#ffc45c}
+.table{overflow:hidden}
+.table th,.dash-table th{color:#93a6c3;border-bottom-color:#2a3b54}
+.table td,.dash-table td{border-bottom-color:#1c2a40;color:#dce6f7}
+.row:hover,.market-item:hover,.watch:hover{background:#18263a}
+.remove{background:#351321;color:#ff6d84;border-color:#743046}
+.add{background:#0f302b;color:#5ce8bd;border-color:#236c5a}
+.dash-welcome,.dash-online{background:linear-gradient(145deg,#101b2d,#0b1322);border-color:#2a3a52}
+.dash-status{background:linear-gradient(120deg,#25111f,#131b2d);border-color:#713045}
+.dash-icon{background:#ff12381c;color:#ff5571;box-shadow:inset 0 0 0 1px #ff123827}
+.dash-kpi{background:linear-gradient(145deg,#121e31,#0c1423);border-color:#293a53}
+.dash-kpi span{color:#91a2bd}
+.dash-kpi b{color:#f2f6ff}
+.dash-locked{background:radial-gradient(ellipse at 100% 0%,#401124 0%,transparent 45%),linear-gradient(145deg,#101b2d,#090f1c);border-color:#713045;box-shadow:0 0 26px #ff12380c,inset 0 1px #ffffff0a}
+.dash-locked .dash-card-head h3,.dash-locked .muted{color:#e6b9c5}
+.lock-pill{background:linear-gradient(100deg,#ff1238,#b80027);box-shadow:0 0 18px #ff12382b}
+.dash-signal-value{background:#ffffff08;border-color:#ffffff17}
+.dash-chip{background:#ffffff08;color:#d7e2f4}
+.dash-system-row span:last-child{color:#a9bbd3}
+.status-dot{box-shadow:0 0 10px #27e0a3}
+.dash-empty{background:#0b1423;border-color:#34445b}
+.dash-broker-logo{box-shadow:0 0 20px #ff123833}
+.sentiment-bar{background:#25334a}
+.sentiment-bar .buybar{background:linear-gradient(90deg,#18b98b,#52f0bd)}
+.sentiment-bar .sellbar{background:linear-gradient(90deg,#ff3155,#ff7b90)}
+.metric-grid .metric b,.metric b{color:#f4f7ff}
+.toggle{background:#28364b}
+.toggle.on{background:#d90030}
+.backdrop{background:#02050bd9;backdrop-filter:blur(8px)}
+.drawerbtn{background:#101b2d;border-color:#30435d;color:#eaf1ff}
+.ai-summary{background:linear-gradient(145deg,#111c2e,#0b1220);border-color:#2b3e58}
+.ai-badge{background:#35111e;color:#ff718a}
+.ai-decision{background:#0d302b;border-color:#1c725d;color:#63edc1}
+.status-pill{background:#101d30;color:#dce7f8}
+.won{background:#0d352c;color:#4beab5}
+.open{background:#302719;color:#ffd17b}
+.invalidated{background:#391522;color:#ff7188}
+@media(max-width:760px){
+ .app{padding:10px}
+ .top{border-radius:14px}
+ .hero{background:linear-gradient(145deg,#111c2e 0%,#21101e 100%)}
+ .side{border-radius:15px}
+}
+@media(prefers-reduced-motion:no-preference){
+ .panel,.dash-card,.dash-kpi,.mini{animation:mkhandiRise .36s ease both}
+ @keyframes mkhandiRise{from{opacity:.75;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+}
+
 </style></head><body><main class="app">
 <header class="top"><button class="drawerbtn" id="menu">☰</button><div class="brand"><div class="mark"><div class="candles"><i class="c a"></i><i class="c r"></i><i class="c b"></i></div></div><h1>MKHANDI AI SCAN<small>AI CHART SCANNER</small></h1></div><div class="online"><i class="dot"></i> PLATFORM ONLINE</div></header>
 <div class="backdrop" id="backdrop"></div><div class="layout"><aside class="side" id="side">
