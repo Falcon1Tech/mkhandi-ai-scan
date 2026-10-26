@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "MKHANDI AI SCAN",
+  "short_name": "MKHANDI SCAN",
+  "description": "MKHANDI AI chart scanner and market analysis",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#070b15",
+  "theme_color": "#070b15",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {"src": "/ios-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
