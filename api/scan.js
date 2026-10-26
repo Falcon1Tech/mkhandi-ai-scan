@@ -127,6 +127,16 @@ function normalizeAndValidate(result, fields) {
     take_profit_1: tp1,
     take_profit_2: tp2,
     risk_reward: rr,
+    // Compatibility aliases consumed by the existing MKHANDI dashboard renderer.
+    score: Number.isFinite(result.confidence) ? result.confidence : 0,
+    execution_timeframe: String(fields.executionTimeframe || result.executionTimeframe || "M15").slice(0, 12),
+    tp1,
+    tp2,
+    setup_type: recommendation === "NO TRADE" ? "WAIT FOR CONFIRMATION" : "MULTI-TIMEFRAME SETUP",
+    gate_status: recommendation === "NO TRADE" ? "NO TRADE · VALIDATION GATE" : "VALIDATED CANDIDATE · MANUAL REVIEW",
+    reasoning: [...new Set(reasons)].map((text, index) => ({ label: "Reason " + (index + 1), value: text })),
+    evidence: [],
+    timeframes: [{ timeframe: "MULTI-TIMEFRAME", assessment: result.timeframe_analysis || "Not available" }],
     reasons: [...new Set(reasons)],
     warnings: [...new Set(warnings)]
   };
