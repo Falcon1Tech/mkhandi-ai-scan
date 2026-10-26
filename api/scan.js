@@ -167,7 +167,7 @@ export default async function handler(req, res) {
   try {
     const body = await readBody(req);
     const fields = parseMultipart(body, req.headers["content-type"]);
-    const chartNames = ["H4", "H1", "M30", "M15", "M5", "M1", "D1"];
+    const chartNames = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5", "M1"];
     const chartFiles = chartNames.filter(name => fields[name]?.data?.length);
     if (!chartFiles.length) return send(res, 400, { error: "No chart images were received. Upload the required timeframe charts and try again." });
     const images = chartFiles.map(name => ({ name, data: imageToDataUrl(fields[name], name) }));
@@ -213,6 +213,6 @@ export default async function handler(req, res) {
     return send(res, 200, normalizeAndValidate(analysis, fields));
   } catch (error) {
     console.error("MKHANDI /api/scan error:", error);
-    return send(res, error.status || 500, { error: error.status ? error.message : "MKHANDI could not process the chart upload. Please retry. " + (process.env.NODE_ENV === "development" ? error.message : "") });
+    return send(res, error.status || 500, { error: error.status ? error.message : "MKHANDI backend error: " + (error?.message || "Unknown server error") });
   }
 }
