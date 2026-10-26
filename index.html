@@ -691,15 +691,31 @@ $('refresh').onclick=()=>{
 $('deep').onclick=async()=>{
   selectedName=selectedName||golden[0]||null;
   if(!selectedName){if($('deepAssetSelect')&&$('deepAssetSelect').value)selectedName=$('deepAssetSelect').value;else selectedName=golden[0]||null;}if(!selectedName){show('aiDeepScanView','deep');$('deepRunStatus').textContent='Add an asset to the watchlist first.';return;}
-  const d=market[selectedName]||{};
-  if(!Array.isArray(d.candles)||d.candles.length<30){
-    if($('deepRunStatus')&&$('aiDeepScanView').classList.contains('active'))$('deepRunStatus').innerHTML=`<b>${esc(selectedName)} · LIVE DATA REQUIRED</b><br>AI Deep Scan needs at least 30 live candles. Start the Live Market Scanner and wait for the feed to populate.`;else{$('selectedSignal').innerHTML=`<div class="signal-title">${esc(selectedName)}</div><div class="signal-bias amber">WAIT</div><div class="signal-action">LIVE DATA REQUIRED</div><p class="note">AI Deep Scan needs at least 30 live candles. Use REFRESH DATA and wait for the market feed to become LIVE.</p>`;}
-    setFeed(ws?.readyState===1?'WAITING FOR LIVE CANDLES…':'CONNECTING FOR LIVE CANDLES…','amber');
+  let d=market[selectedName]||{};
+  const dedicated=$('aiDeepScanView')?.classList.contains('active');
+  const btn=dedicated?$('deepStandalone'):$('deep');
+  const hasScanData=()=>{const x=market[selectedName]||{};return Array.isArray(x.candles)&&x.candles.length>=30&&['H1','M15','M5'].every(tf=>Array.isArray(x.mtf?.[tf])&&x.mtf[tf].length>=10);};
+  if(!hasScanData()){
+    btn.disabled=true;btn.textContent='CONNECTING & LOADING CANDLES…';
+    if($('deepRunStatus'))$('deepRunStatus').innerHTML=`<b>${esc(selectedName)} · CONNECTING TO LIVE MARKET</b><br>Starting the feed and loading H1, M15 and M5 candles. AI analysis will start automatically when enough data is available.`;
+    setFeed(ws?.readyState===1?'LOADING DEEP-SCAN CANDLES…':'CONNECTING FOR DEEP SCAN…','amber');
     if(!ws||ws.readyState!==1){if(!running&&!connecting){endpointIndex=0;connect();}}
     else{$('refresh').click();}
-    return;
+    const deadline=Date.now()+30000;
+    while(Date.now()<deadline&&!hasScanData()){
+      await new Promise(resolve=>setTimeout(resolve,750));
+      if((!ws||ws.readyState!==1)&&!connecting){endpointIndex=0;connect();}
+      d=market[selectedName]||{};
+      if($('deepRunStatus'))$('deepRunStatus').textContent='Loading live candles… '+['H1','M15','M5'].map(tf=>tf+': '+((d.mtf?.[tf]||[]).length)).join(' · ');
+    }
+    d=market[selectedName]||{};
+    if(!hasScanData()){
+      btn.disabled=false;btn.textContent='🧠 RUN AI DEEP SCAN';
+      if($('deepRunStatus'))$('deepRunStatus').innerHTML='<b>LIVE DATA NOT READY</b><br>Could not load enough live H1, M15 and M5 candles within 30 seconds. Keep the Live Market Scanner connected and try again.';
+      return;
+    }
   }
-  const dedicated=$('aiDeepScanView')?.classList.contains('active');const btn=dedicated?$('deepStandalone'):$('deep');btn.disabled=true;btn.textContent='🧠 AI ANALYSING…';$('result').style.display='none';$('result').innerHTML='';if($('deepResult'))$('deepResult').innerHTML='';if($('deepRunStatus'))$('deepRunStatus').textContent='AI is analysing live multi-timeframe context…';
+  btn.disabled=true;btn.textContent='🧠 AI ANALYSING…';$('result').style.display='none';$('result').innerHTML='';if($('deepResult'))$('deepResult').innerHTML='';if($('deepRunStatus'))$('deepRunStatus').textContent='AI is analysing live multi-timeframe context…';
   try{
     const drawChart=async(candles)=>{const c=document.createElement('canvas');c.width=1200;c.height=600;const x=c.getContext('2d'),a=candles.slice(-80),min=Math.min(...a.map(v=>v.low)),max=Math.max(...a.map(v=>v.high)),range=Math.max(1,max-min),sx=1140/Math.max(1,a.length-1),sy=520/range;x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.strokeStyle='#111';x.lineWidth=2;x.beginPath();a.forEach((v,i)=>{const X=30+i*sx,Y=560-(v.close-min)*sy;i?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke();return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(new Error('Could not create scan image')),'image/jpeg',.82))};
     const fd=new FormData();fd.append('executionTimeframe','M5');const h1=await drawChart(d.mtf.H1||[]),m15=await drawChart(d.mtf.M15||[]),m5=await drawChart(d.mtf.M5||d.candles||[]);fd.append('H1',h1,'H1.jpg');fd.append('M15',m15,'M15.jpg');fd.append('M5',m5,'M5.jpg');fd.append('instrument',selectedName);fd.append('technicalState',JSON.stringify({signal:d.signal,mtf:d.mtfAnalysis,gates:d.gates}));
