@@ -1,0 +1,38 @@
+name: Build MKHANDI iOS App
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-build.yml"
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build-ios-simulator:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || true
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build iOS simulator app
+        working-directory: ios
+        run: xcodebuild -project MKHANDIAIScan.xcodeproj -scheme MKHANDIAIScan -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Package simulator app
+        run: |
+          mkdir -p artifacts
+          ditto ios/build/Build/Products/Debug-iphonesimulator/MKHANDIAIScan.app artifacts/MKHANDIAIScan-Simulator.app
+          cd artifacts
+          zip -r MKHANDIAIScan-Simulator.zip MKHANDIAIScan-Simulator.app
+      - name: Upload simulator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mkhandi-ios-simulator
+          path: artifacts/MKHANDIAIScan-Simulator.zip
+          retention-days: 14
