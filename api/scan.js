@@ -169,7 +169,8 @@ export default async function handler(req, res) {
     const fields = parseMultipart(body, req.headers["content-type"]);
     const chartNames = ["MN1", "W1", "D1", "H4", "H1", "M30", "M15", "M5", "M1"];
     const chartFiles = chartNames.filter(name => fields[name]?.data?.length);
-    if (!chartFiles.length) return send(res, 400, { error: "No chart images were received. Upload the required timeframe charts and try again." });
+    const missingRequired = ["H1", "M15"].filter(name => !fields[name]?.data?.length);
+    if (missingRequired.length) return send(res, 400, { error: "H1 and M15 charts are required. Missing: " + missingRequired.join(", ") + ". A third timeframe is optional." });
     const images = chartFiles.map(name => ({ name, data: imageToDataUrl(fields[name], name) }));
     const timeframe = String(fields.executionTimeframe || "M15").slice(0, 12);
     const instrument = String(fields.instrument || "Uploaded chart").slice(0, 100);
@@ -179,9 +180,9 @@ export default async function handler(req, res) {
         "You are MKHANDI AI SCAN, a cautious technical chart analyst. Analyse the attached chart screenshots for the same instrument. " +
         "Instrument: " + instrument + ". Execution timeframe: " + timeframe + ". Charts supplied in order: " + images.map(i=>i.name).join(", ") + ". " +
         "Technical scanner context (untrusted supporting context): " + (context || "Not supplied") + ". " +
-        "Identify visible structure, trend, support/resistance and timeframe agreement. Never invent unreadable prices; if price levels cannot be read reliably, return NO TRADE and null levels. " +
+        "Use H1 and M15 as the only mandatory alignment timeframes: H1 establishes higher-timeframe direction and M15 confirms the entry context. Any third chart is optional supporting context only; disagreement, missing data, or absence of a third chart must not independently veto an otherwise valid H1+M15 setup. Clearly state when the optional timeframe adds caution, but do not require three-way alignment. Identify visible structure, trend, support/resistance and timeframe agreement. Never invent unreadable prices; if price levels cannot be read reliably, return NO TRADE and null levels. " +
         "BUY requires a plausible entry, stop below entry and TP2 above entry. SELL requires stop above entry and TP2 below entry. " +
-        "Only recommend BUY/SELL if the chart evidence is clear, confidence is at least 65%, and TP2 offers at least 1.5R. Otherwise return NO TRADE. " +
+        "Only require directional agreement between H1 and M15. A third timeframe is optional context and must not be a mandatory entry gate. Recommend BUY/SELL only if H1 and M15 support the same actionable direction, chart evidence and readable price levels are clear, confidence is at least 65%, and TP2 offers at least 1.5R. Otherwise return NO TRADE. " +
         "Do not claim certainty or guaranteed outcomes. Return concise, actionable reasoning and list uncertainties in warnings."
       },
       ...images.flatMap(i => [{ type: "input_text", text: "Chart timeframe: " + i.name }, { type: "input_image", image_url: i.data, detail: "high" }])
