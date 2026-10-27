@@ -84,6 +84,7 @@ const outputSchema = {
   properties: {
     instrument: { type: "string" },
     executionTimeframe: { type: "string" },
+    trade_style: { type: "string", enum: ["SCALP", "INTRADAY", "SWING"] },
     recommendation: { type: "string", enum: ["BUY", "SELL", "NO TRADE"] },
     overall_bias: { type: "string", enum: ["BULLISH", "BEARISH", "NEUTRAL"] },
     confidence: { type: "number", minimum: 0, maximum: 100 },
@@ -108,7 +109,7 @@ const outputSchema = {
     reasons: { type: "array", items: { type: "string" } },
     warnings: { type: "array", items: { type: "string" } }
   },
-  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","range_high","range_low","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
+  required: ["instrument","executionTimeframe","trade_style","recommendation","overall_bias","confidence","range_high","range_low","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
 };
 
 // Deterministic MMS Fibonacci engine. Coefficients are mapped from the range low (0.0) to range high (1.0).
@@ -171,21 +172,24 @@ function normalizeAndValidate(result, fields) {
     recommendation = "NO TRADE";
     warnings.push("Signal validation failed: prices were missing, invalid, or inconsistent with the proposed direction.");
   }
-  if (recommendation !== "NO TRADE" && (!Number.isFinite(result.confidence) || result.confidence < 65)) {
+  if (recommendation !== "NO TRADE" && (!Number.isFinite(result.confidence) || result.confidence < 55)) {
     recommendation = "NO TRADE";
-    warnings.push("Confidence did not meet MKHANDI's minimum 65% threshold.");
+    warnings.push("Confidence did not meet MKHANDI's minimum 55% candidate threshold.");
   }
   let rr = null;
   if (entry !== null && sl !== null && tp2 !== null && Math.abs(entry - sl) > 0) {
     rr = Number((Math.abs(tp2 - entry) / Math.abs(entry - sl)).toFixed(2));
-    if (recommendation !== "NO TRADE" && rr < 1.5) {
+    if (recommendation !== "NO TRADE" && rr < 1.2) {
       recommendation = "NO TRADE";
-      warnings.push("Risk-to-reward did not meet MKHANDI's minimum 1:1.5 threshold.");
+      warnings.push("Risk-to-reward did not meet MKHANDI's minimum 1:1.2 candidate threshold.");
     }
   }
   if (recommendation === "NO TRADE") reasons.push("MKHANDI validation did not confirm a tradeable setup. Wait for clearer confirmation.");
+  const selectedTF = String(fields.executionTimeframe || result.executionTimeframe || "M15").toUpperCase();
+  const tradeStyle = ["M1","M5","M15"].includes(selectedTF) ? "SCALP" : (["H4","D1","W1","MN1"].includes(selectedTF) ? "SWING" : "INTRADAY");
   return {
     ...result,
+    trade_style: tradeStyle,
     instrument: String(fields.instrument || result.instrument || "Uploaded chart").slice(0, 100),
     executionTimeframe: String(fields.executionTimeframe || result.executionTimeframe || "Not specified").slice(0, 12),
     recommendation,
@@ -233,7 +237,7 @@ export default async function handler(req, res) {
         "Use H1 and M15 as the only mandatory alignment timeframes: H1 establishes higher-timeframe direction and M15 confirms the entry context. Any third chart is optional supporting context only; disagreement, missing data, or absence of a third chart must not independently veto an otherwise valid H1+M15 setup. Clearly state when the optional timeframe adds caution, but do not require three-way alignment. Identify visible structure, trend, support/resistance and timeframe agreement. Never invent unreadable prices; if price levels cannot be read reliably, return NO TRADE and null levels. " +
         "Also evaluate the user\u2019s MMS Fibonacci range-breakout methodology when chart evidence supports it. Look for consolidation/range boundaries, relevant swing high and swing low, and whether a breakout is confirmed or still pending. The custom MMS levels are: 2.8 Setup Complete; 2.0 Close 50%; 1.2 2nd chance; 1.0 BUY; 0.5 SL; 0.0 SELL; -0.2 2nd chance; -1.0 Close 50%; -1.8 Setup Complete. Treat these as user-defined labels and level coefficients, not proof of a valid trade. Do not fabricate exact Fibonacci prices or assume anchor orientation if the screenshot does not make them clear; explain uncertainty and return NO TRADE when reliable levels cannot be determined. Consider both BUY and SELL directions for every instrument: do not impose Boom-sell-only or Crash-buy-only restrictions. Assess the actual chart structure and strategy evidence instead. Do not execute trades. " +
         "BUY requires a plausible entry, stop below entry and TP2 above entry. SELL requires stop above entry and TP2 below entry. " +
-        "Only require directional agreement between H1 and M15. A third timeframe is optional context and must not be a mandatory entry gate. Recommend BUY/SELL only if H1 and M15 support the same actionable direction, chart evidence and readable price levels are clear, confidence is at least 65%, and TP2 offers at least 1.5R. Otherwise return NO TRADE. " +
+        "Use H1 for context and the selected execution timeframe for entry timing. Do not demand perfect directional agreement when H1 is neutral, corrective, or ranging: a clear continuation, breakout, or retest on the execution timeframe may qualify if H1 does not show strong opposing structure. A third timeframe is optional and must never be a mandatory gate. Recommend a conditional BUY/SELL candidate when chart evidence supports direction, a plausible entry, logical invalidation/stop, readable levels, confidence of at least 55%, and projected TP2 of at least 1.2R. Reserve NO TRADE for genuinely unclear structure, unreadable/missing levels, strong opposing evidence, or invalid risk geometry. If a coherent setup awaits a trigger, return the candidate direction with a clearly stated trigger and label it conditional. Never invent price levels or force a signal when evidence is insufficient. " +
         "Do not claim certainty or guaranteed outcomes. Return concise, actionable reasoning and list uncertainties in warnings."
       },
       ...images.flatMap(i => [{ type: "input_text", text: "Chart timeframe: " + i.name }, { type: "input_image", image_url: i.data, detail: "high" }])
