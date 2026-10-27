@@ -147,13 +147,24 @@ export function calculateMmsFibonacciLevels(rangeLow, rangeHigh) {
 
 function normalizeAndValidate(result, fields) {
   const direction = result.recommendation;
-  const prices = [result.entry, result.stop_loss, result.take_profit_1, result.take_profit_2];
-  const validPrices = prices.every(v => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0));
   let reasons = Array.isArray(result.reasons) ? result.reasons.slice(0, 8) : [];
   let warnings = Array.isArray(result.warnings) ? result.warnings.slice(0, 8) : [];
   let recommendation = direction;
-  const [entry, sl, tp1, tp2] = prices;\n  const mmsLevels = calculateMmsFibonacciLevels(result.range_low, result.range_high);\n  if (!mmsLevels) warnings.push("MMS Fibonacci engine: valid range_low/range_high anchors were not available; calculated levels cannot be trusted.");\n  // When anchors are valid, deterministic MMS levels become the source of truth for entry, stop and extension target.\n  if (mmsLevels && (direction === "BUY" || direction === "SELL")) {\n    result.entry = direction === "BUY" ? mmsLevels.buy_entry : mmsLevels.sell_entry;\n    result.stop_loss = mmsLevels.stop_loss;\n    result.take_profit_1 = direction === "BUY" ? mmsLevels.buy_close_50 : mmsLevels.sell_close_50;\n    result.take_profit_2 = direction === "BUY" ? mmsLevels.buy_setup_complete : mmsLevels.sell_setup_complete;\n  }
-  const [validatedEntry, validatedSl, validatedTp1, validatedTp2] = [result.entry, result.stop_loss, result.take_profit_1, result.take_profit_2];\n  const geometryOk = validatedEntry !== null && validatedSl !== null && validatedTp2 !== null &&
+  const mmsLevels = calculateMmsFibonacciLevels(result.range_low, result.range_high);
+  if (!mmsLevels) {
+    warnings.push("MMS Fibonacci engine: valid range_low/range_high anchors were not available; calculated levels cannot be trusted.");
+    if (direction !== "NO TRADE") recommendation = "NO TRADE";
+  }
+  // Deterministic MMS levels are the source of truth for entry, stop and target prices.
+  if (mmsLevels && (direction === "BUY" || direction === "SELL")) {
+    result.entry = direction === "BUY" ? mmsLevels.buy_entry : mmsLevels.sell_entry;
+    result.stop_loss = mmsLevels.stop_loss;
+    result.take_profit_1 = direction === "BUY" ? mmsLevels.buy_close_50 : mmsLevels.sell_close_50;
+    result.take_profit_2 = direction === "BUY" ? mmsLevels.buy_setup_complete : mmsLevels.sell_setup_complete;
+  }
+  const [entry, sl, tp1, tp2] = [result.entry, result.stop_loss, result.take_profit_1, result.take_profit_2];
+  const validPrices = [entry, sl, tp1, tp2].every(v => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0));
+  const geometryOk = entry !== null && sl !== null && tp2 !== null &&
     ((direction === "BUY" && sl < entry && tp2 > entry) ||
      (direction === "SELL" && sl > entry && tp2 < entry));
   if (!validPrices || (direction !== "NO TRADE" && !geometryOk)) {
@@ -178,17 +189,13 @@ function normalizeAndValidate(result, fields) {
     instrument: String(fields.instrument || result.instrument || "Uploaded chart").slice(0, 100),
     executionTimeframe: String(fields.executionTimeframe || result.executionTimeframe || "Not specified").slice(0, 12),
     recommendation,
-    entry: recommendation === "NO TRADE" ? entry : entry,
-    stop_loss: sl,
-    take_profit_1: tp1,
-    take_profit_2: tp2,
+    entry, stop_loss: sl, take_profit_1: tp1, take_profit_2: tp2,
     risk_reward: rr,
-    // Compatibility aliases consumed by the existing MKHANDI dashboard renderer.
+    mms_fibonacci: mmsLevels,
     score: Number.isFinite(result.confidence) ? result.confidence : 0,
     execution_timeframe: String(fields.executionTimeframe || result.executionTimeframe || "M15").slice(0, 12),
-    tp1,
-    tp2,
-    setup_type: recommendation === "NO TRADE" ? "WAIT FOR CONFIRMATION" : "MULTI-TIMEFRAME SETUP",
+    tp1, tp2,
+    setup_type: recommendation === "NO TRADE" ? "WAIT FOR CONFIRMATION" : "MMS FIBONACCI BREAKOUT",
     gate_status: recommendation === "NO TRADE" ? "NO TRADE · VALIDATION GATE" : "VALIDATED CANDIDATE · MANUAL REVIEW",
     reasoning: [...new Set(reasons)].map((text, index) => ({ label: "Reason " + (index + 1), value: text })),
     evidence: [],
