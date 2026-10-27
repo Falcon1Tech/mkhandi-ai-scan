@@ -87,6 +87,8 @@ const outputSchema = {
     recommendation: { type: "string", enum: ["BUY", "SELL", "NO TRADE"] },
     overall_bias: { type: "string", enum: ["BULLISH", "BEARISH", "NEUTRAL"] },
     confidence: { type: "number", minimum: 0, maximum: 100 },
+    range_high: { type: ["number", "null"] },
+    range_low: { type: ["number", "null"] },
     summary: { type: "string" },
     market_structure: { type: "string" },
     timeframe_analysis: { type: "string" },
@@ -106,17 +108,62 @@ const outputSchema = {
     reasons: { type: "array", items: { type: "string" } },
     warnings: { type: "array", items: { type: "string" } }
   },
-  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
+  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","range_high","range_low","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
 };
+
+// Deterministic MMS Fibonacci engine. Coefficients are mapped from the range low (0.0) to range high (1.0).
+// This keeps all prices reproducible; the AI identifies/assesses anchors, but does not calculate these levels.
+export function calculateMmsFibonacciLevels(rangeLow, rangeHigh) {
+  if (!Number.isFinite(rangeLow) || !Number.isFinite(rangeHigh) || rangeLow <= 0 || rangeHigh <= rangeLow) return null;
+  const span = rangeHigh - rangeLow;
+  const coefficients = [
+    [2.8, "Setup Complete"], [2.0, "Close 50%"], [1.2, "2nd chance"],
+    [1.0, "BUY"], [0.5, "SL"], [0.0, "SELL"],
+    [-0.2, "2nd chance"], [-1.0, "Close 50%"], [-1.8, "Setup Complete"]
+  ];
+  const levels = {};
+  for (const [coefficient, label] of coefficients) {
+    levels[String(coefficient)] = {
+      label,
+      price: Number((rangeLow + span * coefficient).toFixed(8))
+    };
+  }
+  return {
+    range_low: Number(rangeLow.toFixed(8)),
+    range_high: Number(rangeHigh.toFixed(8)),
+    range_size: Number(span.toFixed(8)),
+    levels,
+    buy_entry: levels["1"].price,
+    sell_entry: levels["0"].price,
+    stop_loss: levels["0.5"].price,
+    buy_close_50: levels["2"].price,
+    buy_second_chance: levels["1.2"].price,
+    buy_setup_complete: levels["2.8"].price,
+    sell_second_chance: levels["-0.2"].price,
+    sell_close_50: levels["-1"].price,
+    sell_setup_complete: levels["-1.8"].price
+  };
+}
 
 function normalizeAndValidate(result, fields) {
   const direction = result.recommendation;
-  const prices = [result.entry, result.stop_loss, result.take_profit_1, result.take_profit_2];
-  const validPrices = prices.every(v => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0));
   let reasons = Array.isArray(result.reasons) ? result.reasons.slice(0, 8) : [];
   let warnings = Array.isArray(result.warnings) ? result.warnings.slice(0, 8) : [];
   let recommendation = direction;
-  const [entry, sl, tp1, tp2] = prices;
+  const mmsLevels = calculateMmsFibonacciLevels(result.range_low, result.range_high);
+  if (!mmsLevels) {
+    warnings.push("MMS Fibonacci engine: valid range_low/range_high anchors were not available; calculated levels cannot be trusted.");
+    if (direction !== "NO TRADE") recommendation = "NO TRADE";
+  }
+  // Deterministic MMS levels are the source of truth for entry, stop and target prices.
+  if (mmsLevels && (direction === "BUY" || direction === "SELL")) {
+    result.entry = direction === "BUY" ? mmsLevels.buy_entry : mmsLevels.sell_entry;
+    result.stop_loss = mmsLevels.stop_loss;
+    result.take_profit_1 = direction === "BUY" ? mmsLevels.buy_close_50 : mmsLevels.sell_close_50;
+    result.take_profit_2 = direction === "BUY" ? mmsLevels.buy_setup_complete : mmsLevels.sell_setup_complete;
+  }
+  const [entry, sl, tp1, tp2] = [result.entry, result.stop_loss, result.take_profit_1, result.take_profit_2];
+  const validPrices = [entry, sl, tp1, tp2].every(v => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0));
   const geometryOk = entry !== null && sl !== null && tp2 !== null &&
     ((direction === "BUY" && sl < entry && tp2 > entry) ||
      (direction === "SELL" && sl > entry && tp2 < entry));
@@ -142,17 +189,13 @@ function normalizeAndValidate(result, fields) {
     instrument: String(fields.instrument || result.instrument || "Uploaded chart").slice(0, 100),
     executionTimeframe: String(fields.executionTimeframe || result.executionTimeframe || "Not specified").slice(0, 12),
     recommendation,
-    entry: recommendation === "NO TRADE" ? entry : entry,
-    stop_loss: sl,
-    take_profit_1: tp1,
-    take_profit_2: tp2,
+    entry, stop_loss: sl, take_profit_1: tp1, take_profit_2: tp2,
     risk_reward: rr,
-    // Compatibility aliases consumed by the existing MKHANDI dashboard renderer.
+    mms_fibonacci: mmsLevels,
     score: Number.isFinite(result.confidence) ? result.confidence : 0,
     execution_timeframe: String(fields.executionTimeframe || result.executionTimeframe || "M15").slice(0, 12),
-    tp1,
-    tp2,
-    setup_type: recommendation === "NO TRADE" ? "WAIT FOR CONFIRMATION" : "MULTI-TIMEFRAME SETUP",
+    tp1, tp2,
+    setup_type: recommendation === "NO TRADE" ? "WAIT FOR CONFIRMATION" : "MMS FIBONACCI BREAKOUT",
     gate_status: recommendation === "NO TRADE" ? "NO TRADE · VALIDATION GATE" : "VALIDATED CANDIDATE · MANUAL REVIEW",
     reasoning: [...new Set(reasons)].map((text, index) => ({ label: "Reason " + (index + 1), value: text })),
     evidence: [],
