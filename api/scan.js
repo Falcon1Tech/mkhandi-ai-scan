@@ -96,10 +96,17 @@ const outputSchema = {
     take_profit_2: { type: ["number", "null"] },
     risk_reward: { type: ["number", "null"] },
     invalidation: { type: "string" },
+    support_levels: { type: "string" },
+    resistance_levels: { type: "string" },
+    potential_entry: { type: "string" },
+    potential_stop_loss: { type: "string" },
+    potential_tp1: { type: "string" },
+    potential_tp2: { type: "string" },
+    potential_risk_reward: { type: "string" },
     reasons: { type: "array", items: { type: "string" } },
     warnings: { type: "array", items: { type: "string" } }
   },
-  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","reasons","warnings"]
+  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
 };
 
 function normalizeAndValidate(result, fields) {
