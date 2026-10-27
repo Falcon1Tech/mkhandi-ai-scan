@@ -87,6 +87,8 @@ const outputSchema = {
     recommendation: { type: "string", enum: ["BUY", "SELL", "NO TRADE"] },
     overall_bias: { type: "string", enum: ["BULLISH", "BEARISH", "NEUTRAL"] },
     confidence: { type: "number", minimum: 0, maximum: 100 },
+    range_high: { type: ["number", "null"] },
+    range_low: { type: ["number", "null"] },
     summary: { type: "string" },
     market_structure: { type: "string" },
     timeframe_analysis: { type: "string" },
@@ -106,8 +108,42 @@ const outputSchema = {
     reasons: { type: "array", items: { type: "string" } },
     warnings: { type: "array", items: { type: "string" } }
   },
-  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
+  required: ["instrument","executionTimeframe","recommendation","overall_bias","confidence","range_high","range_low","summary","market_structure","timeframe_analysis","entry","stop_loss","take_profit_1","take_profit_2","risk_reward","invalidation","support_levels","resistance_levels","potential_entry","potential_stop_loss","potential_tp1","potential_tp2","potential_risk_reward","reasons","warnings"]
 };
+
+// Deterministic MMS Fibonacci engine. Coefficients are mapped from the range low (0.0) to range high (1.0).
+// This keeps all prices reproducible; the AI identifies/assesses anchors, but does not calculate these levels.
+export function calculateMmsFibonacciLevels(rangeLow, rangeHigh) {
+  if (!Number.isFinite(rangeLow) || !Number.isFinite(rangeHigh) || rangeLow <= 0 || rangeHigh <= rangeLow) return null;
+  const span = rangeHigh - rangeLow;
+  const coefficients = [
+    [2.8, "Setup Complete"], [2.0, "Close 50%"], [1.2, "2nd chance"],
+    [1.0, "BUY"], [0.5, "SL"], [0.0, "SELL"],
+    [-0.2, "2nd chance"], [-1.0, "Close 50%"], [-1.8, "Setup Complete"]
+  ];
+  const levels = {};
+  for (const [coefficient, label] of coefficients) {
+    levels[String(coefficient)] = {
+      label,
+      price: Number((rangeLow + span * coefficient).toFixed(8))
+    };
+  }
+  return {
+    range_low: Number(rangeLow.toFixed(8)),
+    range_high: Number(rangeHigh.toFixed(8)),
+    range_size: Number(span.toFixed(8)),
+    levels,
+    buy_entry: levels["1"].price,
+    sell_entry: levels["0"].price,
+    stop_loss: levels["0.5"].price,
+    buy_close_50: levels["2"].price,
+    buy_second_chance: levels["1.2"].price,
+    buy_setup_complete: levels["2.8"].price,
+    sell_second_chance: levels["-0.2"].price,
+    sell_close_50: levels["-1"].price,
+    sell_setup_complete: levels["-1.8"].price
+  };
+}
 
 function normalizeAndValidate(result, fields) {
   const direction = result.recommendation;
@@ -116,8 +152,8 @@ function normalizeAndValidate(result, fields) {
   let reasons = Array.isArray(result.reasons) ? result.reasons.slice(0, 8) : [];
   let warnings = Array.isArray(result.warnings) ? result.warnings.slice(0, 8) : [];
   let recommendation = direction;
-  const [entry, sl, tp1, tp2] = prices;
-  const geometryOk = entry !== null && sl !== null && tp2 !== null &&
+  const [entry, sl, tp1, tp2] = prices;\n  const mmsLevels = calculateMmsFibonacciLevels(result.range_low, result.range_high);\n  if (!mmsLevels) warnings.push("MMS Fibonacci engine: valid range_low/range_high anchors were not available; calculated levels cannot be trusted.");\n  // When anchors are valid, deterministic MMS levels become the source of truth for entry, stop and extension target.\n  if (mmsLevels && (direction === "BUY" || direction === "SELL")) {\n    result.entry = direction === "BUY" ? mmsLevels.buy_entry : mmsLevels.sell_entry;\n    result.stop_loss = mmsLevels.stop_loss;\n    result.take_profit_1 = direction === "BUY" ? mmsLevels.buy_close_50 : mmsLevels.sell_close_50;\n    result.take_profit_2 = direction === "BUY" ? mmsLevels.buy_setup_complete : mmsLevels.sell_setup_complete;\n  }
+  const [validatedEntry, validatedSl, validatedTp1, validatedTp2] = [result.entry, result.stop_loss, result.take_profit_1, result.take_profit_2];\n  const geometryOk = validatedEntry !== null && validatedSl !== null && validatedTp2 !== null &&
     ((direction === "BUY" && sl < entry && tp2 > entry) ||
      (direction === "SELL" && sl > entry && tp2 < entry));
   if (!validPrices || (direction !== "NO TRADE" && !geometryOk)) {
