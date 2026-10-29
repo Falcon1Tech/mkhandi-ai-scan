@@ -299,7 +299,7 @@ input,select,textarea{background:#080f1d!important;color:#f1f5ff!important;borde
  <section class="dash-card"><div class="dash-card-head"><h3>System Status</h3><small id="dashSystemState">Initialising</small></div><div class="dash-system" id="sys"></div><div class="section-title">SIGNAL ACTIVITY</div><div id="dashboardActivity"></div></section></div>
 </div>
 </div>
-<div class="view" id="scanner"><div class="panel"><h2 style="font-size:17px;margin:0 0 4px">Live Market Scanner</h2><div class="sub">Continuous Deriv market feed → historical candles → technical engine → MTF intelligence → Decision Gates → locked signals. Manage up to five assets here. Default focus: V75, V25, Multi-Step 2, V50 (1s) and Gold.</div><div class="section-title" style="margin-top:10px">MARKET SELECTION</div><div class="market-picker"><div class="market-list"><div class="market-list-title">WATCHLIST · <span id="marketCount">0 / 5</span></div><div id="selectedMarkets" class="market-items"></div></div><div class="market-list"><div class="market-list-title">AVAILABLE MARKETS</div><div id="availableMarkets" class="market-items"></div></div></div><div class="metric-grid" style="margin:10px 0"><div class="metric"><span>WATCHLIST</span><b id="scannerUniverse">5</b></div><div class="metric"><span>LIVE DATA</span><b id="scannerLiveCount">0</b></div><div class="metric"><span>ANALYSED</span><b id="scannerAnalysedCount">0</b></div><div class="metric"><span>LOCKED SIGNALS</span><b id="scannerLockedCount">0</b></div></div><div class="scanner-actions"><button class="tf active" id="start" aria-pressed="false">▶ ENABLE LIVE MARKET SCANNER</button><button class="tf" id="refresh">↻ REFRESH WATCHLIST DATA</button></div><div class="feedline" style="margin-bottom:10px"><span>LIVE SCANNER CONTROL</span><span id="scannerToggleState" class="amber">DISABLED</span></div><div class="scanner-grid"><div class="panel" style="padding:13px"><div class="section-title" style="margin-top:0">MARKET FEED</div><div class="feedline" id="feed"><span>Status</span><span class="amber">OFFLINE</span></div><div id="derivDiag" class="row" style="margin-top:8px;font-size:10px"><b>CONNECTION STATUS</b><span id="diagText">Waiting for live market feed…</span></div><div id="watch" class="watchlist" style="margin-top:6px"></div></div><div class="panel signalbox" style="padding:13px"><div class="section-title" style="margin-top:0">SELECTED ASSET</div><div id="selectedSignal"><p class="muted">Select an asset after the live feed populates.</p></div><button class="scanbtn" id="deep">🧠 AI DEEP SCAN</button><div id="liveShareBar" class="sharebar" style="display:none"><button class="sharebtn primary" id="shareSignal">↗ SHARE SIGNAL</button><button class="sharebtn" id="shareScreenshot">▣ SHARE SCREENSHOT</button><button class="sharebtn wa" id="shareWhatsApp">WhatsApp</button><button class="sharebtn tg" id="shareTelegram">Telegram</button></div><img id="sharePreview" class="share-card-preview" alt="MKHANDI share preview"></div></div><div class="note">Data path: active_symbols → historical candles → live ticks → technical filter. Live streams are created once per connection; refresh operations use one-shot snapshots to avoid duplicate Deriv subscriptions. AI Deep Scan is on-demand; the technical scanner analyses every live candle update without calling AI on every tick.</div></div></div>
+<div class="view" id="scanner"><div class="panel"><h2 style="font-size:17px;margin:0 0 4px">Live Market Scanner</h2><div class="sub">Continuous Deriv market feed → historical candles → technical engine → MTF intelligence → Decision Gates → locked signals. Manage up to five assets here. Default focus: V75, V25, Multi-Step 2, V50 (1s) and Gold.</div><div class="section-title" style="margin-top:10px">MARKET SELECTION</div><div class="market-picker"><div class="market-list"><div class="market-list-title">WATCHLIST · <span id="marketCount">0 / 5</span></div><div id="selectedMarkets" class="market-items"></div></div><div class="market-list"><div class="market-list-title">AVAILABLE MARKETS</div><div id="availableMarkets" class="market-items"></div></div></div><div class="metric-grid" style="margin:10px 0"><div class="metric"><span>WATCHLIST</span><b id="scannerUniverse">5</b></div><div class="metric"><span>LIVE DATA</span><b id="scannerLiveCount">0</b></div><div class="metric"><span>ANALYSED</span><b id="scannerAnalysedCount">0</b></div><div class="metric"><span>LOCKED SIGNALS</span><b id="scannerLockedCount">0</b></div></div><div class="panel" style="padding:12px;margin:10px 0"><div class="section-title" style="margin-top:0">PRICE-TRIGGER ALERTS</div><div class="sub">Arm a browser notification when a WAIT setup reaches its live Deriv price trigger. Keep this page open and the Live Market Scanner enabled.</div><div class="sharebar"><button class="btn red" id="enablePriceAlerts" type="button">ENABLE NOTIFICATIONS</button><span id="alertPermissionStatus" class="note">Notifications not enabled</span></div><div id="priceAlertList" class="table" style="margin-top:8px"></div></div><div class="scanner-actions"><button class="tf active" id="start" aria-pressed="false">▶ ENABLE LIVE MARKET SCANNER</button><button class="tf" id="refresh">↻ REFRESH WATCHLIST DATA</button></div><div class="feedline" style="margin-bottom:10px"><span>LIVE SCANNER CONTROL</span><span id="scannerToggleState" class="amber">DISABLED</span></div><div class="scanner-grid"><div class="panel" style="padding:13px"><div class="section-title" style="margin-top:0">MARKET FEED</div><div class="feedline" id="feed"><span>Status</span><span class="amber">OFFLINE</span></div><div id="derivDiag" class="row" style="margin-top:8px;font-size:10px"><b>CONNECTION STATUS</b><span id="diagText">Waiting for live market feed…</span></div><div id="watch" class="watchlist" style="margin-top:6px"></div></div><div class="panel signalbox" style="padding:13px"><div class="section-title" style="margin-top:0">SELECTED ASSET</div><div id="selectedSignal"><p class="muted">Select an asset after the live feed populates.</p></div><button class="scanbtn" id="deep">🧠 AI DEEP SCAN</button><div id="liveShareBar" class="sharebar" style="display:none"><button class="sharebtn primary" id="shareSignal">↗ SHARE SIGNAL</button><button class="sharebtn" id="shareScreenshot">▣ SHARE SCREENSHOT</button><button class="sharebtn wa" id="shareWhatsApp">WhatsApp</button><button class="sharebtn tg" id="shareTelegram">Telegram</button></div><img id="sharePreview" class="share-card-preview" alt="MKHANDI share preview"></div></div><div class="note">Data path: active_symbols → historical candles → live ticks → technical filter. Live streams are created once per connection; refresh operations use one-shot snapshots to avoid duplicate Deriv subscriptions. AI Deep Scan is on-demand; the technical scanner analyses every live candle update without calling AI on every tick.</div></div></div>
 <div class="view" id="aiDeepScanView"><div class="panel"><div class="eyebrow">MKHANDI AI QUALIFICATION</div><h2 style="font-size:20px;margin:5px 0">AI Deep Scan</h2><div class="sub">Run a deeper qualification on the selected watchlist asset using required live H1 and M15 candles, with M5 as optional extra context. This workspace is separate from the continuous scanner.</div><div class="facts"><div class="fact"><span>ASSET</span><b id="deepAssetLabel">Select a watchlist asset</b></div><div class="fact"><span>DATA REQUIREMENT</span><b>30+ live candles</b></div></div><div class="section-title">CHOOSE WATCHLIST ASSET</div><select id="deepAssetSelect" class="tf" style="width:100%;max-width:420px"></select><div class="sharebar"><button class="btn red" id="deepStandalone">🧠 RUN AI DEEP SCAN</button><button class="btn" onclick="show('scanner')">Open Watchlist →</button></div><div id="deepRunStatus" class="row" style="margin-top:10px">Choose an asset and run AI Deep Scan. Start the Live Market Scanner first if market data is not connected.</div><div id="deepResult"></div></div></div>
 <div class="view" id="sentiment"><div class="panel"><div class="eyebrow">SIGNAL-DERIVED MARKET READ</div><h2 style="font-size:20px;margin:5px 0">Market Sentiment</h2><div class="sub">A transparent summary of MKHANDI's current technical bias across your watchlist. This is not a third-party trader poll and does not invent external buy/sell percentages.</div><div id="sentimentSummary" class="metric-grid"></div><div class="section-title">WATCHLIST BIAS DISTRIBUTION</div><div id="sentimentList" class="table"></div><div class="section-title">HOW TO READ THIS</div><div class="row"><b>BUY / BULLISH</b><span>Current technical engine direction is bullish. A locked signal remains locked until objective invalidation.</span></div><div class="row"><b>SELL / BEARISH</b><span>Current technical engine direction is bearish. This is scanner output, not a guarantee of future movement.</span></div><div class="row"><b>WAIT / NEUTRAL</b><span>Data is insufficient, mixed, or has not passed MKHANDI decision gates.</span></div></div></div>
 <div class="view" id="profile"><div class="panel"><div class="eyebrow">YOUR WORKSPACE</div><h2 style="font-size:20px;margin:5px 0">Profile</h2><div class="sub">Personalise the name shown on your MKHANDI dashboard. This is saved in this browser only.</div><div class="section-title">DISPLAY NAME</div><input id="profileName" class="tf" style="width:100%;max-width:460px" maxlength="60" placeholder="MKHANDI Trader"><div class="sharebar"><button class="btn red" id="saveProfile">SAVE PROFILE</button></div><div id="profileStatus" class="note">Your profile is stored locally in this browser.</div></div></div>
@@ -431,13 +431,13 @@ if(m.msg_type==='active_symbols'){
 if(m.msg_type==='candles'){
   const q=m.req_id?requestMap[m.req_id]:null;const name=q?.name||Object.keys(market).find(n=>market[n].symbol===m.echo_req?.ticks_history);if(!name)return;
   const candles=(m.candles||[]).map(c=>({epoch:Number(c.epoch),open:Number(c.open),high:Number(c.high),low:Number(c.low),close:Number(c.close)})).filter(c=>[c.open,c.high,c.low,c.close].every(Number.isFinite));
-  const d=market[name]||{};d.mtf=d.mtf||{};const tf=q?.tf||'M1';d.mtf[tf]=candles;if(tf==='M1'){d.candles=candles;d.price=candles.at(-1)?.close??d.price;d.mtf.M5=d.mtf.M5||aggregate(candles,5)}else if(tf==='M5'&&candles.length)d.candles=d.candles||aggregate(candles,5);d.state='LIVE';d.error=null;d.signal=technical(d.mtf.M5&&d.mtf.M5.length>=30?d.mtf.M5:aggregate(d.candles||[],5));updateSignalLock(d,d.signal);d.mtfAnalysis=buildMTF(d);d.gates=buildGates(d);recordOutcomeSnapshot(name,d);market[name]=d;saveTechnicalSnapshot(name,d.signal);if(!selectedName)selectedName=name;renderAll();return
+  const d=market[name]||{};d.mtf=d.mtf||{};const tf=q?.tf||'M1';d.mtf[tf]=candles;if(tf==='M1'){d.candles=candles;d.price=candles.at(-1)?.close??d.price;d.mtf.M5=d.mtf.M5||aggregate(candles,5)}else if(tf==='M5'&&candles.length)d.candles=d.candles||aggregate(candles,5);d.state='LIVE';d.error=null;d.signal=technical(d.mtf.M5&&d.mtf.M5.length>=30?d.mtf.M5:aggregate(d.candles||[],5));updateSignalLock(d,d.signal);d.mtfAnalysis=buildMTF(d);d.gates=buildGates(d);recordOutcomeSnapshot(name,d);market[name]=d;checkSignalAlerts(name,d);saveTechnicalSnapshot(name,d.signal);if(!selectedName)selectedName=name;renderAll();return
 }
 if(m.msg_type==='ohlc'){
   const symbol=m.ohlc?.symbol,name=Object.keys(market).find(n=>market[n].symbol===symbol);if(!name)return;
   const o=m.ohlc;const c={epoch:Number(o.open_time||o.epoch||Date.now()/1000),open:Number(o.open),high:Number(o.high),low:Number(o.low),close:Number(o.close)};
   if(![c.open,c.high,c.low,c.close].every(Number.isFinite))return;
-  let d=market[name]||{},arr=d.candles||[],last=arr[arr.length-1];if(!last||last.epoch!==c.epoch){arr=arr.slice(-119);arr.push(c)}else arr[arr.length-1]=c;d.candles=arr;d.price=c.close;d.signal=technical(arr);updateSignalLock(d,d.signal);d.state='LIVE';recordOutcomeSnapshot(name,d);d.error=null;market[name]=d;saveTechnicalSnapshot(name,d.signal);renderAll();return
+  let d=market[name]||{},arr=d.candles||[],last=arr[arr.length-1];if(!last||last.epoch!==c.epoch){arr=arr.slice(-119);arr.push(c)}else arr[arr.length-1]=c;d.candles=arr;d.price=c.close;d.signal=technical(arr);updateSignalLock(d,d.signal);d.state='LIVE';recordOutcomeSnapshot(name,d);d.error=null;market[name]=d;checkSignalAlerts(name,d);saveTechnicalSnapshot(name,d.signal);renderAll();return
 }
 }
 
@@ -506,10 +506,10 @@ function technical(c){
   const bias=bullScore>bearScore+6?'BULLISH':bearScore>bullScore+6?'BEARISH':'NEUTRAL';
   const score=pct(Math.min(100,45+Math.max(0,directional-conflict)*0.65));
   let action='WAIT';
-  if(bias==='BULLISH'&&score>=68&&trigger.startsWith('BULLISH'))action='BUY';
-  else if(bias==='BEARISH'&&score>=68&&trigger.startsWith('BEARISH'))action='SELL';
-  else if(bias==='BULLISH'&&score>=72&&momDir==='BULLISH'&&structure.includes('BULLISH'))action='BUY';
-  else if(bias==='BEARISH'&&score>=72&&momDir==='BEARISH'&&structure.includes('BEARISH'))action='SELL';
+  if(bias==='BULLISH'&&score>=61&&trigger.startsWith('BULLISH'))action='BUY';
+  else if(bias==='BEARISH'&&score>=61&&trigger.startsWith('BEARISH'))action='SELL';
+  else if(bias==='BULLISH'&&score>=66&&momDir==='BULLISH'&&structure.includes('BULLISH'))action='BUY';
+  else if(bias==='BEARISH'&&score>=66&&momDir==='BEARISH'&&structure.includes('BEARISH'))action='SELL';
   const factors=[];
   factors.push(`${trendDir} EMA trend`);
   factors.push(`${momDir} momentum`);
@@ -798,6 +798,65 @@ function scanSignalValue(sig,keys){if(!sig)return null;for(const k of keys){cons
 renderHistory();window.addEventListener('resize',()=>{renderDashboardChart();if(selectedName&&document.getElementById('scanner')?.classList.contains('active')){const d=market[selectedName];if(d)drawMarketChart($('selectedChart'),d.candles||d.mtf?.M5||[],d.signal)}});setTimeout(()=>{if(!running&&!connecting)connect()},250);
 setInterval(()=>{renderHistory();if(running)renderAll();},3000);
 setInterval(()=>{if(running&&ws&&ws.readyState===1){for(const n of golden){const d=market[n];if(!d?.symbol)continue;for(const [tf,g] of [['M5',300],['M15',900],['H1',3600]]){const tid=++req;send({ticks_history:d.symbol,end:'latest',count:120,style:'candles',granularity:g,req_id:tid},{kind:'candles',name:n,tf,refresh:true});}}}},60000);renderAll();renderHistory();
+
+/* Flexible signal qualification + browser price-trigger alerts */
+const ALERTS_KEY='mkhandiPriceTriggerAlerts';
+function readPriceAlerts(){try{return JSON.parse(localStorage.getItem(ALERTS_KEY)||'[]')}catch{return []}}
+function savePriceAlerts(rows){localStorage.setItem(ALERTS_KEY,JSON.stringify(rows.slice(0,100)));renderPriceAlerts()}
+function renderPriceAlerts(){
+ const host=document.getElementById('priceAlertList');if(!host)return;
+ const rows=readPriceAlerts();
+ host.innerHTML=rows.length?rows.slice(0,12).map(a=>'<div class="row"><b>'+esc(a.asset)+' · '+esc(a.direction)+' trigger</b><span>Level: '+esc(formatPrice(a.level))+' · '+esc(a.status||'ARMED')+(a.firedAt?' · '+new Date(a.firedAt).toLocaleTimeString():'')+'</span></div>').join(''):'<div class="row"><b>No price alerts yet</b><span>Enable notifications, then start the live scanner. Directional WAIT setups will arm automatically.</span></div>';
+}
+function notifyPriceAlert(title,body,tag){
+ if('Notification' in window && Notification.permission==='granted'){
+   try{new Notification(title,{body,tag:tag||'mkhandi-alert',icon:'/ios-icon.svg',renotify:false})}catch(e){console.warn('Notification failed',e)}
+ }
+ try{if(navigator.vibrate)navigator.vibrate([180,90,180])}catch{}
+}
+function checkSignalAlerts(name,d){
+ if(!d||!Number.isFinite(Number(d.price)))return;
+ const s=d.signal||{},m=s.metrics||{},price=Number(d.price),atrValue=Number(s.atr)||0;
+ let rows=readPriceAlerts();
+ let alert=rows.find(a=>a.asset===name&&a.status==='ARMED');
+ const bias=(s.signalState==='LOCKED'?(s.lockedDirection==='BUY'?'BULLISH':'BEARISH'):s.bias);
+ const direction=bias==='BULLISH'?'BUY':bias==='BEARISH'?'SELL':null;
+ const triggerLevel=direction==='BUY'?Number(m.rangeHigh):direction==='SELL'?Number(m.rangeLow):NaN;
+ if(!alert&&direction&&Number.isFinite(triggerLevel)&&triggerLevel>0){
+   alert={id:name+'-'+direction+'-'+triggerLevel,asset:name,direction,level:triggerLevel,status:'ARMED',createdAt:Date.now(),lastPrice:price,atr:atrValue};
+   rows.unshift(alert);rows=rows.slice(0,100);localStorage.setItem(ALERTS_KEY,JSON.stringify(rows));
+ }
+ if(alert){
+   const prev=Number(alert.lastPrice),level=Number(alert.level);
+   const crossed=alert.direction==='BUY'?(prev<level&&price>=level):(prev>level&&price<=level);
+   const near=atrValue>0&&Math.abs(price-level)<=atrValue*.08;
+   if(crossed||near){
+     alert.status='TRIGGERED';alert.firedAt=Date.now();alert.triggerPrice=price;
+     localStorage.setItem(ALERTS_KEY,JSON.stringify(rows));
+     notifyPriceAlert((alert.direction==='BUY'?'BUY':'SELL')+' TRIGGER REACHED — '+name,
+       alert.direction+' trigger reached near '+formatPrice(level)+'. Live price: '+formatPrice(price)+'. Recheck SL/TP and confirm before entry.',
+       alert.id);
+   }else{alert.lastPrice=price;alert.atr=atrValue;localStorage.setItem(ALERTS_KEY,JSON.stringify(rows))}
+ }
+ // A fresh confirmed live candidate is also surfaced immediately, once per asset/direction.
+ if((s.action==='BUY'||s.action==='SELL')&&s.signalState!=='LOCKED'){
+   const key='confirmed-'+name+'-'+s.action;
+   const already=rows.some(a=>a.id===key&&a.status==='TRIGGERED');
+   if(!already){
+     rows.unshift({id:key,asset:name,direction:s.action,level:price,status:'TRIGGERED',firedAt:Date.now(),triggerPrice:price});
+     localStorage.setItem(ALERTS_KEY,JSON.stringify(rows.slice(0,100)));
+     notifyPriceAlert(s.action+' SIGNAL — '+name,'Live scanner confirmed '+s.action+' at '+formatPrice(price)+'. Review the setup and risk levels before entry.',key);
+   }
+ }
+ renderPriceAlerts();
+}
+const enableAlertsButton=document.getElementById('enablePriceAlerts');
+if(enableAlertsButton)enableAlertsButton.addEventListener('click',async()=>{
+ if(!('Notification' in window)){document.getElementById('alertPermissionStatus').textContent='This browser does not support notifications.';return}
+ try{const p=await Notification.requestPermission();document.getElementById('alertPermissionStatus').textContent=p==='granted'?'Notifications enabled · keep scanner running':('Notification permission: '+p);if(p==='granted')notifyPriceAlert('MKHANDI alerts enabled','You will be notified when a live price trigger is reached.','mkhandi-enabled')}catch(e){document.getElementById('alertPermissionStatus').textContent='Could not enable notifications.'}
+});
+if('Notification' in window&&document.getElementById('alertPermissionStatus'))document.getElementById('alertPermissionStatus').textContent=Notification.permission==='granted'?'Notifications enabled':'Notifications not enabled';
+renderPriceAlerts();
 </script></body></html>
 
 <style>
