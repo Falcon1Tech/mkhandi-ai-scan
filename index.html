@@ -506,10 +506,10 @@ function technical(c){
   const bias=bullScore>bearScore+6?'BULLISH':bearScore>bullScore+6?'BEARISH':'NEUTRAL';
   const score=pct(Math.min(100,45+Math.max(0,directional-conflict)*0.65));
   let action='WAIT';
-  if(bias==='BULLISH'&&score>=61&&trigger.startsWith('BULLISH'))action='BUY';
-  else if(bias==='BEARISH'&&score>=61&&trigger.startsWith('BEARISH'))action='SELL';
-  else if(bias==='BULLISH'&&score>=66&&momDir==='BULLISH'&&structure.includes('BULLISH'))action='BUY';
-  else if(bias==='BEARISH'&&score>=66&&momDir==='BEARISH'&&structure.includes('BEARISH'))action='SELL';
+  if(bias==='BULLISH'&&score>=58&&trigger.startsWith('BULLISH'))action='BUY';
+  else if(bias==='BEARISH'&&score>=58&&trigger.startsWith('BEARISH'))action='SELL';
+  else if(bias==='BULLISH'&&score>=60&&momDir==='BULLISH'&&structure.includes('BULLISH'))action='BUY';
+  else if(bias==='BEARISH'&&score>=60&&momDir==='BEARISH'&&structure.includes('BEARISH'))action='SELL';
   const factors=[];
   factors.push(`${trendDir} EMA trend`);
   factors.push(`${momDir} momentum`);
