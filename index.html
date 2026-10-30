@@ -289,7 +289,7 @@ input,select,textarea{background:#080f1d!important;color:#f1f5ff!important;borde
  <div class="dash-kpi"><span>Avg R:R</span><b id="dashAvgRR">—</b><div class="kpi-foot">Recorded trade data</div></div>
 </div>
 <div class="dash-layout">
- <section class="dash-card dash-locked"><div class="dash-card-head"><h3>🔒 LOCKED SIGNAL</h3><span class="lock-pill" id="dashConfidence">AWAITING SIGNAL</span></div><div class="dash-signal-name" id="dashSignalName">No active locked signal</div><div class="dash-signal-sub" id="dashSignalSub">Connect the live scanner to populate the signal card.</div><div class="dash-signal-values"><div class="dash-signal-value"><span>Entry</span><b class="entry" id="dashEntry">—</b></div><div class="dash-signal-value"><span>Stop Loss</span><b class="stop" id="dashSL">—</b></div><div class="dash-signal-value"><span>Take Profit (TP2)</span><b class="target" id="dashTP">—</b></div><div class="dash-signal-value"><span>R:R</span><b class="rr" id="dashRR">—</b></div></div><div class="dash-signal-bottom"><span class="dash-chip" id="dashTrend">Trend · —</span><span class="dash-chip" id="dashStrength">Strength · —</span><span class="dash-chip" id="dashTimeframe">Timeframe · M5 + H1</span></div><button class="dash-action" onclick="show('scanner')">View Watchlist Analysis →</button></section>
+ 
  <section class="dash-card dash-sentiment"><div class="dash-card-head"><h3>Traders Right Now</h3><small>Live signal distribution</small></div><div id="dashSentiment" class="dash-list"><div class="dash-empty">Direction shares will appear when live signals are available. No trader-community sentiment feed is connected.</div></div><div class="note">This panel reflects MKHANDI signal directions, not external trader activity.</div></section>
  <section class="dash-card"><div class="dash-card-head"><h3>Daily Signals</h3><button class="smallbtn" onclick="show('performance')">View history →</button></div><small class="muted" id="dashTodayDate"></small><div class="dash-daily" id="dashDaily" style="margin-top:10px"><div class="mini"><b>0</b><span>Published</span></div><div class="mini"><b>0</b><span>Wins</span></div><div class="mini"><b>0</b><span>Losses</span></div><div class="mini"><b>0</b><span>Breakeven</span></div><div class="mini"><b>—</b><span>Win Rate</span></div></div><button class="dash-action" style="margin-top:10px" onclick="show('performance')">View Full Performance →</button></section>
 </div>
@@ -807,4 +807,10 @@ setInterval(()=>{if(running&&ws&&ws.readyState===1){for(const n of golden){const
 .ai-summary .tentative-plan .ai-card{background:#101f32!important;border-color:#355776!important}
 .ai-summary .tentative-plan .ai-card span{color:#9bb5d4!important}
 .ai-summary .tentative-plan .ai-card b{color:#f4f8ff!important}
+
+/* Phase 1 dashboard cleanup */
+#dashboard .dash-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+#dashboard .dash-sentiment{grid-column:1/-1}
+#dashboard .dash-card{min-width:0}
+@media(max-width:760px){#dashboard .dash-layout{grid-template-columns:minmax(0,1fr)}#dashboard .dash-sentiment{grid-column:auto}#dashboard .dash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
