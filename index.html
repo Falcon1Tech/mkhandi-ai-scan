@@ -837,8 +837,8 @@ setInterval(()=>{renderHistory();if(running)renderAll();},3000);
 setInterval(()=>{if(running&&ws&&ws.readyState===1){for(const n of golden){const d=market[n];if(!d?.symbol)continue;for(const [tf,g] of [['M5',300],['M15',900],['H1',3600]]){const tid=++req;send({ticks_history:d.symbol,end:'latest',count:120,style:'candles',granularity:g,req_id:tid},{kind:'candles',name:n,tf,refresh:true});}}}},60000);renderAll();renderHistory();
 </script>
 <script type="module">
-const MKHANDI_SUPABASE_URL = window.MKHANDI_SUPABASE_URL || "";
-const MKHANDI_SUPABASE_ANON_KEY = window.MKHANDI_SUPABASE_ANON_KEY || "";
+const MKHANDI_SUPABASE_URL = window.MKHANDI_SUPABASE_URL || "https://xrthszxomclwrleezkem.supabase.co";
+const MKHANDI_SUPABASE_ANON_KEY = window.MKHANDI_SUPABASE_ANON_KEY || "sb_publishable_UeJC9UkWWeaFrbOPbyWDNA_2dJZzkD4";
 const gate = document.getElementById("mkAuthGate");
 const app = document.getElementById("mkhandiApp");
 const form = document.getElementById("mkAuthForm");
