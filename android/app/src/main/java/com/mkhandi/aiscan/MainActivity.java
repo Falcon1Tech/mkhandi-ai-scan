@@ -59,7 +59,7 @@ public class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " MKHANDIAndroid/1.3.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " MKHANDIAndroid/1.4.0");
         webView.setBackgroundColor(BACKGROUND);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.setVerticalScrollBarEnabled(false);
@@ -210,7 +210,7 @@ public class MainActivity extends Activity {
         panel.addView(retry, retryParams);
 
         TextView version = new TextView(this);
-        version.setText("MKHANDI AI SCAN  •  ANDROID 1.3.0");
+        version.setText("MKHANDI AI SCAN  •  ANDROID 1.4.0");
         version.setTextColor(Color.rgb(105, 115, 132));
         version.setTextSize(10);
         version.setGravity(Gravity.CENTER);
