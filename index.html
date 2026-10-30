@@ -598,20 +598,20 @@ function updateSignalLock(d,raw){
         invalid=true; reason='Opposite bullish trigger confirmed beyond the locked signal zone.';
       }
     }
-    if(invalid){
-      d.signalLock={...lock,active:false,invalidatedAt:Date.now(),invalidationReason:reason};
-    }
+    if(invalid)d.signalLock={...lock,active:false,invalidatedAt:Date.now(),invalidationReason:reason};
   }
 
+  // Publication gate: technical BUY/SELL candidates are held privately until AI Deep Scan
+  // confirms direction, valid risk geometry, minimum confidence and minimum R:R.
   if(!d.signalLock?.active && (raw.action==='BUY'||raw.action==='SELL')){
-    const direction=raw.action;
-    const invalidation=direction==='BUY'?Number(m.rangeLow):Number(m.rangeHigh);
-    d.signalLock={
-      active:true,direction,entry:price,
-      invalidation:Number.isFinite(invalidation)?invalidation:null,
-      score:raw.score,biasAtEntry:raw.bias,triggerAtEntry:raw.trigger,lockedAt:Date.now()
-    };
-    ensureSignalId(d.signalLock); recordSignalIssued(d.marketName||selectedName||d.display||d.symbol||'Asset',d);
+    raw.signalState='AI_QUALIFICATION_PENDING';
+    raw.displayAction='WAIT';
+    raw.displayBias=raw.bias;
+    if(!d.aiQualificationPending && Date.now()-(d.lastAIDeepQualificationAt||0)>120000){
+      d.aiQualificationPending=true;
+      d.lastAIDeepQualificationAt=Date.now();
+      queueAIDeepQualification(d,raw);
+    }
   }
 
   if(d.signalLock?.active){
@@ -624,9 +624,83 @@ function updateSignalLock(d,raw){
     raw.lockedInvalidation=d.signalLock.invalidation;
     raw.lockedAt=d.signalLock.lockedAt;
   }else{
-    raw.signalState=d.signalLock?.invalidatedAt?'INVALIDATED':'UNLOCKED';
-    raw.displayAction=raw.action;
+    raw.signalState=raw.action==='BUY'||raw.action==='SELL'?'AI_QUALIFICATION_PENDING':(d.signalLock?.invalidatedAt?'INVALIDATED':'UNLOCKED');
+    raw.displayAction=raw.signalState==='AI_QUALIFICATION_PENDING'?'WAIT':raw.action;
     raw.displayBias=raw.bias;
+  }
+}
+
+async function queueAIDeepQualification(d,technicalCandidate){
+  const name=d.marketName||d.display||golden.find(n=>market[n]?.symbol===d.symbol)||selectedName||'Unknown asset';
+  const fail=(reason)=>{console.info('MKHANDI AI qualification did not publish candidate:',name,reason);};
+  try{
+    const live=market[name]||d;
+    const frames=live.mtf||{};
+    if(!Array.isArray(frames.H1)||frames.H1.length<10||!Array.isArray(frames.M15)||frames.M15.length<10){
+      fail('Required H1/M15 context is not ready.');
+      return;
+    }
+    const drawQualificationChart=async(candles)=>{
+      const c=document.createElement('canvas');c.width=1200;c.height=600;
+      const x=c.getContext('2d'),a=candles.slice(-80);
+      if(a.length<10)throw new Error('Not enough candles for AI qualification');
+      const min=Math.min(...a.map(v=>Number(v.low))),max=Math.max(...a.map(v=>Number(v.high))),range=Math.max(1e-8,max-min),top=34,bottom=548,plotH=bottom-top,plotW=1140,step=plotW/a.length,Y=p=>bottom-(p-min)*plotH/range;
+      x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.strokeStyle='#e6eaf0';x.lineWidth=1;
+      for(let i=0;i<=5;i++){const yy=top+i*plotH/5;x.beginPath();x.moveTo(30,yy);x.lineTo(1170,yy);x.stroke();x.fillStyle='#526071';x.font='15px Arial';x.fillText((max-i*range/5).toFixed(5),6,yy-4)}
+      a.forEach((v,i)=>{const cx=30+i*step+step/2,wickTop=Y(Number(v.high)),wickBottom=Y(Number(v.low)),openY=Y(Number(v.open)),closeY=Y(Number(v.close)),bodyW=Math.max(3,Math.min(12,step*.62)),bull=Number(v.close)>=Number(v.open);x.strokeStyle=bull?'#155eef':'#e11d48';x.fillStyle=bull?'#155eef':'#e11d48';x.lineWidth=2;x.beginPath();x.moveTo(cx,wickTop);x.lineTo(cx,wickBottom);x.stroke();x.fillRect(cx-bodyW/2,Math.min(openY,closeY),bodyW,Math.max(2,Math.abs(closeY-openY)))});
+      x.fillStyle='#111827';x.font='bold 17px Arial';x.fillText('MKHANDI LIVE CANDLE CHART · LAST '+a.length+' CANDLES',30,22);
+      return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(new Error('Could not create AI chart image')),'image/jpeg',.9));
+    };
+    const fd=new FormData();
+    fd.append('executionTimeframe','M15');
+    fd.append('H1',await drawQualificationChart(frames.H1),'H1.jpg');
+    fd.append('M15',await drawQualificationChart(frames.M15),'M15.jpg');
+    if(Array.isArray(frames.M5)&&frames.M5.length>=10)fd.append('M5',await drawQualificationChart(frames.M5),'M5.jpg');
+    fd.append('instrument',name);
+    fd.append('technicalState',JSON.stringify({candidateDirection:technicalCandidate.action,technicalScore:technicalCandidate.score,technicalBias:technicalCandidate.bias,trigger:technicalCandidate.trigger,reason:technicalCandidate.reason,metrics:technicalCandidate.metrics,mtf:live.mtfAnalysis,gates:live.gates,price:live.price}));
+    const response=await fetch('/api/scan',{method:'POST',body:fd});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(body.error||'AI Deep Scan request failed');
+    const recommendation=String(body.recommendation||'NO TRADE').toUpperCase();
+    const confidence=Number(body.score??body.confidence);
+    const entry=Number(body.entry),stop=Number(body.stop_loss),tp2=Number(body.take_profit_2??body.tp2);
+    const geometry=Number.isFinite(entry)&&Number.isFinite(stop)&&Number.isFinite(tp2)&&
+      ((recommendation==='BUY'&&stop<entry&&tp2>entry)||(recommendation==='SELL'&&stop>entry&&tp2<entry));
+    const rr=geometry?Math.abs(tp2-entry)/Math.abs(entry-stop):0;
+    if(recommendation!==technicalCandidate.action||!geometry||!Number.isFinite(confidence)||confidence<50||rr<1.1){
+      fail('AI returned '+recommendation+'; confidence '+(Number.isFinite(confidence)?confidence:'n/a')+'%; R:R '+(rr?rr.toFixed(2):'n/a')+'. Candidate remains unpublished.');
+      return;
+    }
+    const current=market[name]||d;
+    if(current.signalLock?.active)return;
+    const lock={
+      active:true,direction:recommendation,entry,invalidation:stop,stopLoss:stop,tp1:Number(body.take_profit_1??body.tp1)||null,tp2,
+      score:confidence,biasAtEntry:recommendation==='BUY'?'BULLISH':'BEARISH',
+      triggerAtEntry:technicalCandidate.trigger,lockedAt:Date.now(),aiQualified:true,
+      aiRecommendation:recommendation,aiRiskReward:Number(rr.toFixed(2)),aiSetupType:body.setup_type||'AI QUALIFIED',
+      aiSummary:body.why_now||body.gate_summary||'Qualified by AI Deep Scan'
+    };
+    current.signalLock=lock;
+    current.signal= current.signal || technicalCandidate;
+    current.signal.signalState='LOCKED';
+    current.signal.displayAction=lock.direction;
+    current.signal.displayBias=lock.biasAtEntry;
+    current.signal.lockedDirection=lock.direction;
+    current.signal.lockedScore=lock.score;
+    current.signal.lockedEntry=lock.entry;
+    current.signal.lockedInvalidation=lock.invalidation;
+    current.signal.lockedAt=lock.lockedAt;
+    market[name]=current;
+    ensureSignalId(lock);
+    recordSignalIssued(name,current);
+    saveTechnicalSnapshot(name,current.signal);
+    renderAll();
+  }catch(error){
+    fail(error?.message||'Unknown AI qualification error');
+  }finally{
+    d.aiQualificationPending=false;
+    if(market[name])market[name].aiQualificationPending=false;
+    renderAll();
   }
 }
 
