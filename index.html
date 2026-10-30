@@ -853,7 +853,9 @@ document.getElementById("mkAuthToggle").addEventListener("click",()=>setMode(!is
 if(!MKHANDI_SUPABASE_URL || !MKHANDI_SUPABASE_ANON_KEY){form.hidden=true;notice.hidden=false;app.hidden=true;gate.hidden=false;}
 else {
  try {
-  const {createClient}=await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+  let createClient;
+  try { ({createClient}=await import("https://esm.sh/@supabase/supabase-js@2")); }
+  catch (primaryImportError) { console.warn("Primary Supabase SDK CDN failed; trying fallback.",primaryImportError); ({createClient}=await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm")); }
   supabaseClient=createClient(MKHANDI_SUPABASE_URL,MKHANDI_SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:"pkce"}});
   // OAuth may return with a PKCE code. Exchange it before checking the session,
   // otherwise the sign-in gate can render again while the callback is still being processed.
@@ -871,7 +873,7 @@ else {
   supabaseClient.auth.onAuthStateChange((_event,newSession)=>{showApp(newSession);});
   // Re-check after the SDK finishes processing any URL-based auth tokens.
   setTimeout(async()=>{const {data:{session:latestSession}}=await supabaseClient.auth.getSession();if(latestSession)showApp(latestSession);},250);
- } catch(e){authMessage("Unable to initialise account services. Check the Supabase URL/key and reload.");console.error("MKHANDI auth initialisation failed",e);}
+ } catch(e){authMessage("Account services failed: "+(e?.message||String(e))+". Check the browser console for details.");console.error("MKHANDI auth initialisation failed",e);}
 }
 document.getElementById("mkAuthSubmit").addEventListener("click",async()=>{
  if(!supabaseClient){authMessage("Account service is not configured yet.");return;}
