@@ -257,7 +257,38 @@ input,select,textarea{background:#080f1d!important;color:#f1f5ff!important;borde
  .ai-summary .ai-section{padding:8px}
 }
 
-.journal-levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}.journal-levels span{background:#101c2b;border:1px solid #29364b;border-radius:8px;padding:8px;color:#9fb0ca;font-size:10px}.journal-levels b{display:block;color:#f5f7ff;font-size:12px;margin-top:3px}.journal-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.journal-actions .smallbtn{background:#111b2b;border-color:#35445d;color:#eef3ff}.journal-actions .smallbtn:hover{border-color:#ff1238;color:#fff}.journal-note{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1px solid #29364b;background:#0b1220;color:#eef3ff}.journal-actions .smallbtn:focus{outline:2px solid #ff1238}@media(max-width:600px){.journal-levels{grid-template-columns:repeat(2,minmax(0,1fr))}}</style></head><body><main class="app">
+.journal-levels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}.journal-levels span{background:#101c2b;border:1px solid #29364b;border-radius:8px;padding:8px;color:#9fb0ca;font-size:10px}.journal-levels b{display:block;color:#f5f7ff;font-size:12px;margin-top:3px}.journal-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.journal-actions .smallbtn{background:#111b2b;border-color:#35445d;color:#eef3ff}.journal-actions .smallbtn:hover{border-color:#ff1238;color:#fff}.journal-note{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1px solid #29364b;background:#0b1220;color:#eef3ff}.journal-actions .smallbtn:focus{outline:2px solid #ff1238}@media(max-width:600px){.journal-levels{grid-template-columns:repeat(2,minmax(0,1fr))}}</style></head><body>
+<section id="mkAuthGate" class="mk-auth-gate" aria-label="MKHANDI account access">
+  <div class="mk-auth-card">
+    <div class="mk-auth-brand"><span class="mk-auth-mark">M</span><div><h1>MKHANDI AI SCAN</h1><p>Personal trading intelligence workspace</p></div></div>
+    <div id="mkAuthForm">
+      <h2 id="mkAuthHeading">Welcome back</h2><p class="mk-auth-copy" id="mkAuthSubheading">Sign in to access your scanner, journal and performance history.</p>
+      <label for="mkAuthEmail">Email address</label><input id="mkAuthEmail" type="email" autocomplete="email" placeholder="you@example.com" required>
+      <label for="mkAuthPassword">Password</label><input id="mkAuthPassword" type="password" autocomplete="current-password" placeholder="At least 8 characters" required>
+      <div class="mk-auth-actions"><button id="mkAuthSubmit" class="mk-auth-primary">Sign in</button><button id="mkAuthToggle" class="mk-auth-link" type="button">Create account</button></div>
+      <button id="mkAuthReset" class="mk-auth-link mk-auth-reset" type="button">Forgot password?</button>
+      <div class="mk-auth-divider"><span>or continue with</span></div>
+      <button id="mkGoogleSignIn" class="mk-auth-provider" type="button"><b>G</b> Continue with Google</button>
+      <button id="mkAppleSignIn" class="mk-auth-provider" type="button"><b>●</b> Continue with Apple</button>
+      <p id="mkAuthMessage" class="mk-auth-message" role="status"></p>
+      <p class="mk-auth-legal">By continuing, you agree to use MKHANDI AI SCAN as an analysis tool. It does not place trades or guarantee outcomes.</p>
+    </div>
+    <div id="mkAuthSetupNotice" class="mk-auth-setup" hidden><h2>Account sign-in setup required</h2><p>The account screen is ready, but the Supabase project URL and publishable key must be configured before authentication can run.</p><p>Configure <code>window.MKHANDI_SUPABASE_URL</code> and <code>window.MKHANDI_SUPABASE_ANON_KEY</code> in the app configuration, then reload.</p></div>
+  </div>
+</section>
+<style>
+#mkAuthGate{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:22px;background:radial-gradient(ellipse at 15% 10%,#172b4a 0,transparent 42%),linear-gradient(145deg,#070b15,#111827 70%,#220d17);overflow:auto}
+#mkAuthGate[hidden],#mkhandiApp[hidden]{display:none!important}
+.mk-auth-card{width:min(100%,440px);padding:30px;border:1px solid #34435a;border-radius:22px;background:#0d1524;color:#f8fafc;box-shadow:0 24px 80px #0008}
+.mk-auth-brand{display:flex;gap:13px;align-items:center;margin-bottom:30px}.mk-auth-mark{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:#e30613;color:white;font-size:24px;font-weight:950}.mk-auth-brand h1{font-size:17px;letter-spacing:.3px;margin:0}.mk-auth-brand p{font-size:12px;color:#9eacc0;margin:5px 0 0}
+.mk-auth-card h2{font-size:25px;margin:0 0 7px;letter-spacing:-.5px}.mk-auth-copy{font-size:13px;color:#a8b5c8;line-height:1.5;margin:0 0 22px}.mk-auth-card label{display:block;font-size:12px;font-weight:750;margin:14px 0 7px;color:#d9e1ee}
+.mk-auth-card input{width:100%;padding:13px 14px;border:1px solid #35445a;border-radius:10px;background:#080e19;color:#fff;font:inherit;outline:none}.mk-auth-card input:focus{border-color:#e30613;box-shadow:0 0 0 3px #e3061326}
+.mk-auth-actions{display:flex;gap:12px;align-items:center;margin-top:20px}.mk-auth-primary{flex:1;padding:13px 15px;border:0;border-radius:10px;background:#e30613;color:#fff;font-weight:850;cursor:pointer}.mk-auth-primary:disabled{opacity:.6;cursor:wait}.mk-auth-link{border:0;background:transparent;color:#ff737b;font-weight:750;cursor:pointer;padding:8px 0}.mk-auth-reset{font-size:12px;margin-top:6px}
+.mk-auth-divider{display:flex;align-items:center;gap:12px;color:#8290a5;font-size:11px;margin:18px 0}.mk-auth-divider:before,.mk-auth-divider:after{content:"";height:1px;background:#29364a;flex:1}.mk-auth-provider{width:100%;padding:12px;margin:5px 0;border:1px solid #35445a;border-radius:10px;background:#121e30;color:#f7f9fc;font-weight:750;cursor:pointer}.mk-auth-provider b{display:inline-grid;place-items:center;width:22px;margin-right:8px;font-size:16px}.mk-auth-message{min-height:18px;font-size:12px;line-height:1.5;color:#fca5a5}.mk-auth-message.ok{color:#86efac}.mk-auth-legal{font-size:10px;color:#8492a6;line-height:1.5;margin:17px 0 0}.mk-auth-setup{color:#dbeafe;line-height:1.7}.mk-auth-setup code{overflow-wrap:anywhere;color:#fda4af}
+@media(max-width:480px){.mk-auth-card{padding:23px 19px;border-radius:17px}.mk-auth-card h2{font-size:23px}}
+</style>
+
+<main class="app" id="mkhandiApp" hidden>
 <header class="top"><button class="drawerbtn" id="menu">☰</button><div class="brand"><div class="mark"><div class="candles"><i class="c a"></i><i class="c r"></i><i class="c b"></i></div></div><h1>MKHANDI AI SCAN<small>AI CHART SCANNER</small></h1></div><div class="online"><i class="dot"></i> PLATFORM ONLINE</div></header>
 <div class="backdrop" id="backdrop"></div><div class="layout"><aside class="side" id="side">
 <button class="nav active" data-view="dashboard" data-navkey="dashboard">⌂ Dashboard</button>
@@ -804,7 +835,47 @@ function saveScanOutcomeNote(id,value){const h=readJson(SCAN_HISTORY_KEY),i=h.fi
 renderHistory();window.addEventListener('resize',()=>{renderDashboardChart();if(selectedName&&document.getElementById('scanner')?.classList.contains('active')){const d=market[selectedName];if(d)drawMarketChart($('selectedChart'),d.candles||d.mtf?.M5||[],d.signal)}});setTimeout(()=>{if(!running&&!connecting)connect()},250);
 setInterval(()=>{renderHistory();if(running)renderAll();},3000);
 setInterval(()=>{if(running&&ws&&ws.readyState===1){for(const n of golden){const d=market[n];if(!d?.symbol)continue;for(const [tf,g] of [['M5',300],['M15',900],['H1',3600]]){const tid=++req;send({ticks_history:d.symbol,end:'latest',count:120,style:'candles',granularity:g,req_id:tid},{kind:'candles',name:n,tf,refresh:true});}}}},60000);renderAll();renderHistory();
-</script></body></html>
+</script>
+<script type="module">
+const MKHANDI_SUPABASE_URL = window.MKHANDI_SUPABASE_URL || "";
+const MKHANDI_SUPABASE_ANON_KEY = window.MKHANDI_SUPABASE_ANON_KEY || "";
+const gate = document.getElementById("mkAuthGate");
+const app = document.getElementById("mkhandiApp");
+const form = document.getElementById("mkAuthForm");
+const notice = document.getElementById("mkAuthSetupNotice");
+const msg = document.getElementById("mkAuthMessage");
+let supabaseClient = null;
+let isSignUp = false;
+function authMessage(text, ok=false){msg.textContent=text;msg.classList.toggle("ok",ok)}
+function showApp(session){const signedIn=!!session;gate.hidden=signedIn;app.hidden=!signedIn;if(signedIn){const email=session.user?.email||"Account";const header=document.querySelector(".top .online");if(header){header.innerHTML='<i class="dot"></i><span>'+email.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</span> <button id="mkAuthSignOut" type="button" style="margin-left:8px;border:1px solid #e3e6ea;border-radius:8px;background:#fff;padding:6px 9px;cursor:pointer">Sign out</button>';document.getElementById("mkAuthSignOut")?.addEventListener("click",async()=>{const {error}=await supabaseClient.auth.signOut();if(error)authMessage(error.message);});}}}
+function setMode(signup){isSignUp=signup;document.getElementById("mkAuthHeading").textContent=signup?"Create your account":"Welcome back";document.getElementById("mkAuthSubheading").textContent=signup?"Create a secure account to save your signals and journal across devices.":"Sign in to access your scanner, journal and performance history.";document.getElementById("mkAuthSubmit").textContent=signup?"Create account":"Sign in";document.getElementById("mkAuthToggle").textContent=signup?"Already have an account? Sign in":"Create account";document.getElementById("mkAuthPassword").autocomplete=signup?"new-password":"current-password";authMessage("");}
+document.getElementById("mkAuthToggle").addEventListener("click",()=>setMode(!isSignUp));
+if(!MKHANDI_SUPABASE_URL || !MKHANDI_SUPABASE_ANON_KEY){form.hidden=true;notice.hidden=false;app.hidden=true;gate.hidden=false;}
+else {
+ try {
+  const {createClient}=await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
+  supabaseClient=createClient(MKHANDI_SUPABASE_URL,MKHANDI_SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  const {data:{session}}=await supabaseClient.auth.getSession();showApp(session);
+  supabaseClient.auth.onAuthStateChange((_event,newSession)=>showApp(newSession));
+ } catch(e){authMessage("Unable to initialise account services. Check the Supabase URL/key and reload.");console.error("MKHANDI auth initialisation failed",e);}
+}
+document.getElementById("mkAuthSubmit").addEventListener("click",async()=>{
+ if(!supabaseClient){authMessage("Account service is not configured yet.");return;}
+ const email=document.getElementById("mkAuthEmail").value.trim(),password=document.getElementById("mkAuthPassword").value;
+ if(!email||!password){authMessage("Enter your email address and password.");return;}
+ if(password.length<8){authMessage("Use a password with at least 8 characters.");return;}
+ const button=document.getElementById("mkAuthSubmit");button.disabled=true;authMessage(isSignUp?"Creating your account…":"Signing you in…");
+ try{
+  if(isSignUp){const {data,error}=await supabaseClient.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});if(error)throw error;if(data.session){showApp(data.session);authMessage("Account created.",true);}else authMessage("Account created. Check your email to confirm the address, then sign in.",true);}
+  else {const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;showApp(data.session);}
+ }catch(e){authMessage(e.message||"Authentication failed.");}finally{button.disabled=false;}
+});
+document.getElementById("mkGoogleSignIn").addEventListener("click",async()=>{if(!supabaseClient)return authMessage("Account service is not configured yet.");const {error}=await supabaseClient.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin}});if(error)authMessage(error.message);});
+document.getElementById("mkAppleSignIn").addEventListener("click",async()=>{if(!supabaseClient)return authMessage("Account service is not configured yet.");const {error}=await supabaseClient.auth.signInWithOAuth({provider:"apple",options:{redirectTo:location.origin}});if(error)authMessage(error.message);});
+document.getElementById("mkAuthReset").addEventListener("click",async()=>{if(!supabaseClient)return authMessage("Account service is not configured yet.");const email=document.getElementById("mkAuthEmail").value.trim();if(!email)return authMessage("Enter your email address first.");const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:location.origin});authMessage(error?error.message:"If the account exists, a password reset email will be sent.",!error);});
+</script>
+
+</body></html>
 
 <style>
 /* Clear, high-contrast conditional price roadmap for unconfirmed scans */
