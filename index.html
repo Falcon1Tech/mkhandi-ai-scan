@@ -399,9 +399,9 @@ function historyDB(){return new Promise((resolve,reject)=>{const r=indexedDB.ope
 async function saveHistoryImage(id,blob){if(!blob)return;try{const db=await historyDB();await new Promise((res,rej)=>{const tx=db.transaction('images','readwrite');tx.objectStore('images').put(blob,id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}catch(e){console.warn('History image storage unavailable',e)}}
 async function getHistoryImage(id){try{const db=await historyDB();return await new Promise((res,rej)=>{const tx=db.transaction('images','readonly');const q=tx.objectStore('images').get(id);q.onsuccess=()=>res(q.result||null);q.onerror=()=>rej(q.error)})}catch{return null}}
 async function addScanHistory(entry,images=[]){const id='SCAN-'+Date.now().toString(36).toUpperCase()+'-'+Math.random().toString(36).slice(2,6).toUpperCase();const row={id,type:entry.type||'INTERNAL',source:entry.source||'Internal Scan',instrument:entry.instrument||selectedName||'Unknown',timeframe:entry.timeframe||'',summary:entry.summary||'',signal:entry.signal||null,outcome:entry.signal?'OPEN':'NOT_TRACKED',outcomeNote:'',outcomeUpdatedAt:null,createdAt:Date.now(),imageIds:[]};for(let i=0;i<images.length;i++){const b=images[i];if(b){const iid=id+'-'+i;row.imageIds.push(iid);await saveHistoryImage(iid,b)}}const h=readJson(SCAN_HISTORY_KEY);h.unshift(row);saveJson(SCAN_HISTORY_KEY,h.slice(0,300));renderHistory()}
-function recordSignalIssued(name,d){const lock=d?.signalLock;if(!lock)return;const id=ensureSignalId(lock),h=readJson(SIGNAL_HISTORY_KEY);if(h.some(x=>x.signalId===id))return;h.unshift({signalId:id,name,direction:lock.direction,entry:lock.entry,invalidation:lock.invalidation,score:lock.score,biasAtEntry:lock.biasAtEntry,triggerAtEntry:lock.triggerAtEntry,createdAt:lock.lockedAt||Date.now()});saveJson(SIGNAL_HISTORY_KEY,h.slice(0,500))}
+function recordSignalIssued(name,d){const lock=d?.signalLock;if(!lock)return;const id=ensureSignalId(lock),h=readJson(SIGNAL_HISTORY_KEY);if(h.some(x=>x.signalId===id))return;h.unshift({signalId:id,name,direction:lock.direction,entry:lock.entry,invalidation:lock.invalidation,tp1:lock.tp1,tp2:lock.tp2,score:lock.score,biasAtEntry:lock.biasAtEntry,triggerAtEntry:lock.triggerAtEntry,createdAt:lock.lockedAt||Date.now()});saveJson(SIGNAL_HISTORY_KEY,h.slice(0,500));window.MKHANDI_SYNC_WATCHLIST?.()}
 function save(){localStorage.setItem(CONFIG_KEY,JSON.stringify(golden));renderSettings();renderAll()}
-function show(id,navKey=null){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));const activeKey=navKey||({dashboard:'dashboard',scan:'scan',scanner:'scanner',deep:'aiDeepScanView',sentiment:'scanner',signals:'signals',history:'history',performance:'performance',profile:'profile',settings:'settings'}[id]||id);document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.navkey===activeKey));if(id==='scanner'){if(running)renderWatch();renderMarketSentiment()}if(id==='aiDeepScanView'){renderDeepAssetOptions();renderDeepWorkspace()}if(id==='sentiment')renderMarketSentiment();if(id==='settings')renderPlatformSettings();if(id==='profile')loadProfile();window.scrollTo({top:0,behavior:'smooth'});$('side').classList.remove('open');$('backdrop').classList.remove('show')}
+function show(id,navKey=null){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));const activeKey=navKey||({dashboard:'dashboard',scan:'scan',scanner:'scanner',deep:'aiDeepScanView',sentiment:'scanner',signals:'signals',history:'history',performance:'performance',profile:'profile',settings:'settings'}[id]||id);document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.navkey===activeKey));if(id==='scanner'){if(running)renderWatch();renderMarketSentiment()}if(id==='health')window.MKHANDI_REFRESH_HEALTH?.();if(id==='aiDeepScanView'){renderDeepAssetOptions();renderDeepWorkspace()}if(id==='sentiment')renderMarketSentiment();if(id==='settings')renderPlatformSettings();if(id==='profile')loadProfile();window.scrollTo({top:0,behavior:'smooth'});$('side').classList.remove('open');$('backdrop').classList.remove('show')}
 document.querySelectorAll('.nav').forEach(n=>n.onclick=()=>show(n.dataset.view,n.dataset.navkey));$('menu').onclick=()=>{$('side').classList.add('open');$('backdrop').classList.add('show')};$('backdrop').onclick=()=>show('dashboard');
 function renderPlatformSettings(){const runningNow=running||connecting;const st=$('settingsScannerStatus'),btn=$('settingsScannerToggle'),toggle=$('scannerToggleState');if(st)st.textContent=running?'Live scanner enabled':connecting?'Connecting to market feed':'Scanner disabled';if(btn)btn.textContent=runningNow?'DISABLE LIVE SCANNER':'ENABLE LIVE SCANNER';if(toggle){toggle.textContent=running?'ENABLED · LIVE':connecting?'CONNECTING':'DISABLED';toggle.className=running?'green':connecting?'amber':'amber'}const a=$('settingsAssetCount');if(a)a.textContent=`${golden.length} / ${GOLDEN_MAX}`;const l=$('settingsLiveCount');if(l)l.textContent=String(golden.filter(n=>market[n]?.state==='LIVE').length);const sig=$('settingsSignalCount');if(sig)sig.textContent=String(golden.filter(n=>market[n]?.signalLock?.active).length)}
 function loadProfile(){const input=$('profileName');if(input)input.value=localStorage.getItem('mkhandiProfileName')||'MKHANDI Trader'}
@@ -954,8 +954,11 @@ setInterval(()=>{renderHistory();if(running)renderAll();},3000);
 setInterval(()=>{if(running&&ws&&ws.readyState===1){for(const n of golden){const d=market[n];if(!d?.symbol)continue;for(const [tf,g] of [['M5',300],['M15',900],['H1',3600]]){const tid=++req;send({ticks_history:d.symbol,end:'latest',count:120,style:'candles',granularity:g,req_id:tid},{kind:'candles',name:n,tf,refresh:true});}}}},60000);renderAll();renderHistory();
 </script>
 <script type="module">
-const MKHANDI_SUPABASE_URL = window.MKHANDI_SUPABASE_URL || "https://xrthszxomclwrleezkem.supabase.co";
-const MKHANDI_SUPABASE_ANON_KEY = window.MKHANDI_SUPABASE_ANON_KEY || "sb_publishable_UeJC9UkWWeaFrbOPbyWDNA_2dJZzkD4";
+const clientConfig = await fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?r.json():Promise.reject(new Error("Client configuration unavailable")));
+const MKHANDI_SUPABASE_URL = clientConfig.supabaseUrl || "https://xrthszxomclwrleezkem.supabase.co";
+const MKHANDI_SUPABASE_ANON_KEY = clientConfig.supabaseAnonKey || "sb_publishable_UeJC9UkWWeaFrbOPbyWDNA_2dJZzkD4";
+const MKHANDI_ONESIGNAL_APP_ID = clientConfig.onesignalAppId || "";
+let oneSignalReady=false,oneSignalPromise=null,cloudSignalChannel=null;
 const gate = document.getElementById("mkAuthGate");
 const app = document.getElementById("mkhandiApp");
 const form = document.getElementById("mkAuthForm");
@@ -964,7 +967,59 @@ const msg = document.getElementById("mkAuthMessage");
 let supabaseClient = null;
 let isSignUp = false;
 function authMessage(text, ok=false){msg.textContent=text;msg.classList.toggle("ok",ok)}
-function showApp(session){const signedIn=!!session;gate.hidden=signedIn;app.hidden=!signedIn;let accountButton=document.getElementById("mkAuthAccountButton");if(!accountButton){accountButton=document.createElement("button");accountButton.id="mkAuthAccountButton";accountButton.type="button";accountButton.style.cssText="position:fixed;right:12px;top:12px;z-index:99998;border:1px solid #34435a;border-radius:9px;background:#0d1524;color:#f8fafc;padding:8px 12px;font-weight:700;cursor:pointer";document.body.appendChild(accountButton);}if(signedIn){const email=session.user?.email||"Account";accountButton.textContent="Sign out · "+email;accountButton.title="Sign out of MKHANDI AI SCAN";accountButton.onclick=async()=>{accountButton.disabled=true;const {error}=await supabaseClient.auth.signOut();accountButton.disabled=false;if(error){authMessage("Sign out failed: "+error.message);return;}gate.hidden=false;app.hidden=true;setMode(false);};const header=document.querySelector(".top .online");if(header){header.innerHTML='<i class="dot"></i><span>'+email.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</span>';}}else{accountButton.textContent="Sign in";accountButton.title="Sign in to MKHANDI AI SCAN";accountButton.onclick=()=>{gate.hidden=false;app.hidden=true;};accountButton.style.display="none";}}
+async function getOneSignal(){
+ if(!MKHANDI_ONESIGNAL_APP_ID)return null;
+ if(oneSignalPromise)return oneSignalPromise;
+ oneSignalPromise=new Promise((resolve,reject)=>{
+  window.OneSignalDeferred=window.OneSignalDeferred||[];
+  window.OneSignalDeferred.push(async OneSignal=>{
+   try{if(!oneSignalReady){await OneSignal.init({appId:MKHANDI_ONESIGNAL_APP_ID,serviceWorkerPath:"/OneSignalSDKWorker.js",serviceWorkerUpdaterPath:"/OneSignalSDKUpdaterWorker.js"});oneSignalReady=true;}resolve(OneSignal);}catch(e){reject(e);}
+  });
+ });
+ return oneSignalPromise;
+}
+async function syncCloudHistory(userId){
+ const {data,error}=await supabaseClient.from("mkhandi_signals").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(500);
+ if(error)throw error;
+ const key="mkhandiSignalHistory",local=JSON.parse(localStorage.getItem(key)||"[]"),map=new Map(local.map(x=>[String(x.signalId),x]));
+ for(const s of data||[])map.set(s.id,{...(map.get(s.id)||{}),signalId:s.id,name:s.market_name,direction:s.direction,entry:Number(s.entry),invalidation:Number(s.invalidation),tp1:s.tp1,tp2:s.tp2,score:Number(s.confidence),createdAt:new Date(s.created_at).getTime(),outcome:s.status==="ACTIVE"?"OPEN":s.status==="TP2_REACHED"?"TP2_HIT":s.status==="INVALIDATED"?"SL_HIT":"OPEN",source:"SUPABASE"});
+ localStorage.setItem(key,JSON.stringify([...map.values()].slice(0,500)));
+ if(typeof window.renderPerformance==="function")window.renderPerformance();
+ if(typeof window.renderDashboardActivity==="function")window.renderDashboardActivity();
+}
+async function syncWatchlist(userId){
+ const names=JSON.parse(localStorage.getItem("mkhandiGoldenList")||"[]").slice(0,10);
+ const symbols=[...new Set(names.map(n=>window.MKHANDI_RESOLVE_SYMBOL?window.MKHANDI_RESOLVE_SYMBOL(n):null).filter(Boolean))];
+ const interval=Number(localStorage.getItem("mkhandiAiScanInterval"))===60?60:30;
+ const {error}=await supabaseClient.from("mkhandi_watchlists").upsert({user_id:userId,symbols,scan_interval_minutes:interval,enabled:true},{onConflict:"user_id"});
+ if(error)console.warn("MKHANDI watchlist sync:",error.message);
+}
+async function refreshCloudHealth(){
+ const host=document.getElementById("mkHealthRows"),metrics=document.getElementById("mkHealthMetrics");
+ const {data,error}=await supabaseClient.from("mkhandi_scanner_health").select("*").order("updated_at",{ascending:false}).limit(30);
+ if(error){if(host)host.innerHTML='<div class="row">Health service unavailable. Apply the MKHANDI database migration first.</div>';return;}
+ const rows=data||[],latest=rows[0],connected=rows.filter(x=>x.deriv_connected).length;
+ if(metrics)metrics.innerHTML='<div class="metric"><span>DERIV CONNECTION</span><b>'+(connected?"CONNECTED · "+connected+" MARKETS":"WAITING FOR WORKER")+'</b></div><div class="metric"><span>LAST QUOTE</span><b>'+(latest?.last_quote_at?new Date(latest.last_quote_at).toLocaleTimeString():"—")+'</b></div><div class="metric"><span>LAST SCAN</span><b>'+(latest?.last_scan_at?new Date(latest.last_scan_at).toLocaleString():"—")+'</b></div><div class="metric"><span>AI STATUS</span><b>'+(latest?.ai_status||"NOT STARTED")+'</b></div>';
+ if(host)host.innerHTML=rows.length?rows.map(x=>'<div class="row"><b>'+String(x.market_name||x.symbol)+'</b><span>'+(x.deriv_connected?"DERIV CONNECTED":"DERIV DISCONNECTED")+' · Last quote '+(x.last_quote??"—")+' · '+(x.last_quote_at?new Date(x.last_quote_at).toLocaleTimeString():"No quote")+' · AI '+x.ai_status+(x.last_error?' · '+x.last_error:"")+'</span></div>').join(""):'<div class="row">No server health records yet. Enable the scheduled worker after backend setup.</div>';
+ const stamp=document.getElementById("mkHealthUpdated");if(stamp)stamp.textContent="Updated "+new Date().toLocaleTimeString();
+}
+async function afterLogin(session){
+ if(!session?.user?.id)return;
+ try{
+  await syncWatchlist(session.user.id);await syncCloudHistory(session.user.id);
+  if(cloudSignalChannel)await supabaseClient.removeChannel(cloudSignalChannel);
+  cloudSignalChannel=supabaseClient.channel("mkhandi-signals-"+session.user.id).on("postgres_changes",{event:"*",schema:"public",table:"mkhandi_signals",filter:"user_id=eq."+session.user.id},()=>syncCloudHistory(session.user.id)).subscribe();
+  await refreshCloudHealth();
+ }catch(e){console.warn("MKHANDI cloud sync awaits database migration:",e.message||e);}
+ try{if(window.MKHANDI_NATIVE?.login)window.MKHANDI_NATIVE.login(session.user.id);else if(MKHANDI_ONESIGNAL_APP_ID){const os=await getOneSignal();await os.login(session.user.id);}}catch(e){console.warn("OneSignal:",e.message||e);}
+ let button=document.getElementById("mkPushEnable");
+ if(!button){button=document.createElement("button");button.id="mkPushEnable";button.type="button";button.textContent="Enable alerts";button.style.cssText="position:fixed;right:12px;top:58px;z-index:99997;border:1px solid #34435a;border-radius:9px;background:#e30613;color:#fff;padding:8px 12px;font-weight:800;cursor:pointer";document.body.appendChild(button);}
+ button.style.display=(window.MKHANDI_NATIVE||MKHANDI_ONESIGNAL_APP_ID)?"block":"none";
+ button.onclick=async()=>{try{if(window.MKHANDI_NATIVE?.requestPushPermission)window.MKHANDI_NATIVE.requestPushPermission();else{const os=await getOneSignal();await os.Notifications.requestPermission();}button.textContent="Alerts enabled";}catch(e){button.textContent="Enable alerts";console.warn(e);}};
+}
+window.MKHANDI_REFRESH_HEALTH=refreshCloudHealth;
+window.MKHANDI_SYNC_WATCHLIST=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncWatchlist(data.user.id));
+function showApp(session){const signedIn=!!session;gate.hidden=signedIn;app.hidden=!signedIn;let accountButton=document.getElementById("mkAuthAccountButton");if(!accountButton){accountButton=document.createElement("button");accountButton.id="mkAuthAccountButton";accountButton.type="button";accountButton.style.cssText="position:fixed;right:12px;top:12px;z-index:99998;border:1px solid #34435a;border-radius:9px;background:#0d1524;color:#f8fafc;padding:8px 12px;font-weight:700;cursor:pointer";document.body.appendChild(accountButton);}if(signedIn){const email=session.user?.email||"Account";accountButton.textContent="Sign out · "+email;accountButton.title="Sign out of MKHANDI AI SCAN";accountButton.onclick=async()=>{accountButton.disabled=true;const {error}=await supabaseClient.auth.signOut();accountButton.disabled=false;if(error){authMessage("Sign out failed: "+error.message);return;}gate.hidden=false;app.hidden=true;setMode(false);};const header=document.querySelector(".top .online");if(header){header.innerHTML='<i class="dot"></i><span>'+email.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</span>';}}else{accountButton.textContent="Sign in";accountButton.title="Sign in to MKHANDI AI SCAN";accountButton.onclick=()=>{gate.hidden=false;app.hidden=true;};accountButton.style.display="none";}if(signedIn)void afterLogin(session);else{if(cloudSignalChannel){supabaseClient?.removeChannel(cloudSignalChannel);cloudSignalChannel=null;}if(window.MKHANDI_NATIVE?.logout)window.MKHANDI_NATIVE.logout();}}
 function setMode(signup){isSignUp=signup;document.getElementById("mkAuthHeading").textContent=signup?"Create your account":"Welcome back";document.getElementById("mkAuthSubheading").textContent=signup?"Create a secure account to save your signals and journal across devices.":"Sign in to access your scanner, journal and performance history.";document.getElementById("mkAuthSubmit").textContent=signup?"Create account":"Sign in";document.getElementById("mkAuthToggle").textContent=signup?"Already have an account? Sign in":"Create account";document.getElementById("mkAuthPassword").autocomplete=signup?"new-password":"current-password";authMessage("");}
 document.getElementById("mkAuthToggle").addEventListener("click",()=>setMode(!isSignUp));
 if(!MKHANDI_SUPABASE_URL || !MKHANDI_SUPABASE_ANON_KEY){form.hidden=true;notice.hidden=false;app.hidden=true;gate.hidden=false;}
@@ -999,6 +1054,7 @@ document.getElementById("mkAuthSubmit").addEventListener("click",async()=>{
 });
 document.getElementById("mkGoogleSignIn").addEventListener("click",async()=>{if(!supabaseClient)return authMessage("Account service is not configured yet.");const {error}=await supabaseClient.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin}});if(error)authMessage(error.message);});
 document.getElementById("mkAppleSignIn").addEventListener("click",async()=>{if(!supabaseClient)return authMessage("Account service is not configured yet.");const {error}=await supabaseClient.auth.signInWithOAuth({provider:"apple",options:{redirectTo:location.origin}});if(error)authMessage(error.message);});
+document.getElementById("mkHealthRefresh")?.addEventListener("click",refreshCloudHealth);
 document.getElementById("mkAuthReset").addEventListener("click",async()=>{if(!supabaseClient)return authMessage("Account service is not configured yet.");const email=document.getElementById("mkAuthEmail").value.trim();if(!email)return authMessage("Enter your email address first.");const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:location.origin});authMessage(error?error.message:"If the account exists, a password reset email will be sent.",!error);});
 </script>
 
