@@ -1024,11 +1024,11 @@ async function afterLogin(session){
   cloudSignalChannel=supabaseClient.channel("mkhandi-signals-"+session.user.id).on("postgres_changes",{event:"*",schema:"public",table:"mkhandi_signals",filter:"user_id=eq."+session.user.id},()=>syncCloudHistory(session.user.id)).subscribe();
   await refreshCloudHealth();
  }catch(e){console.warn("MKHANDI cloud sync awaits database migration:",e.message||e);}
- try{if(window.MKHANDI_NATIVE?.login)window.MKHANDI_NATIVE.login(session.user.id);else if(MKHANDI_ONESIGNAL_APP_ID){const os=await getOneSignal();await os.login(session.user.id);}}catch(e){console.warn("OneSignal:",e.message||e);}
+ try{if(window.MKHANDI_NATIVE?.isConfigured?.())window.MKHANDI_NATIVE.login(session.user.id);else if(MKHANDI_ONESIGNAL_APP_ID){const os=await getOneSignal();await os.login(session.user.id);}}catch(e){console.warn("OneSignal:",e.message||e);}
  let button=document.getElementById("mkPushEnable");
  if(!button){button=document.createElement("button");button.id="mkPushEnable";button.type="button";button.textContent="Enable alerts";button.style.cssText="position:fixed;right:12px;top:58px;z-index:99997;border:1px solid #34435a;border-radius:9px;background:#e30613;color:#fff;padding:8px 12px;font-weight:800;cursor:pointer";document.body.appendChild(button);}
- button.style.display=(window.MKHANDI_NATIVE||MKHANDI_ONESIGNAL_APP_ID)?"block":"none";
- button.onclick=async()=>{try{if(window.MKHANDI_NATIVE?.requestPushPermission)window.MKHANDI_NATIVE.requestPushPermission();else{const os=await getOneSignal();await os.Notifications.requestPermission();}button.textContent="Alerts enabled";}catch(e){button.textContent="Enable alerts";console.warn(e);}};
+ button.style.display=(window.MKHANDI_NATIVE?.isConfigured?.()||MKHANDI_ONESIGNAL_APP_ID)?"block":"none";
+ button.onclick=async()=>{try{if(window.MKHANDI_NATIVE?.isConfigured?.())window.MKHANDI_NATIVE.requestPushPermission();else{const os=await getOneSignal();await os.Notifications.requestPermission();}button.textContent="Alerts enabled";}catch(e){button.textContent="Enable alerts";console.warn(e);}};
 }
 window.MKHANDI_REFRESH_HEALTH=refreshCloudHealth;
 window.MKHANDI_SYNC_WATCHLIST=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncWatchlist(data.user.id));window.MKHANDI_SYNC_HISTORY=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncCloudHistory(data.user.id));
