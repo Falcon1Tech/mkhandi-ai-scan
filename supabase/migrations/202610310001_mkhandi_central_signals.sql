@@ -12,6 +12,7 @@ create table if not exists public.mkhandi_watchlists (
 create table if not exists public.mkhandi_signals (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
+  source_id text,
   symbol text not null,
   market_name text not null,
   direction text not null check (direction in ('BUY','SELL')),
@@ -31,6 +32,7 @@ create table if not exists public.mkhandi_signals (
 );
 create unique index if not exists mkhandi_one_active_signal_per_user_symbol
   on public.mkhandi_signals(user_id,symbol) where status='ACTIVE';
+create unique index if not exists mkhandi_signals_user_source on public.mkhandi_signals(user_id,source_id) where source_id is not null;
 create index if not exists mkhandi_signals_user_created on public.mkhandi_signals(user_id,created_at desc);
 
 create table if not exists public.mkhandi_signal_events (
