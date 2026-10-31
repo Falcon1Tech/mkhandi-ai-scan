@@ -134,9 +134,16 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
   if (req.headers.get("x-mkhandi-worker-secret") !== env("MKHANDI_WORKER_SECRET")) return json({ error: "Unauthorized worker" }, 401);
   for (const key of ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","MKHANDI_WORKER_SECRET"]) if (!env(key)) return json({ error: "Missing server secret: " + key }, 503);
-  const { data: users, error } = await supabase.from("mkhandi_watchlists").select("user_id,symbols,enabled,scan_interval_minutes").eq("enabled", true);
-  if (error) return json({ error: error.message }, 500);
-  const results = [];
-  for (const user of users || []) results.push({ user_id: user.user_id, markets: await processUser(user) });
-  return json({ ok: true, scanned_at: new Date().toISOString(), results });
+  const { data: acquired, error: lockError } = await supabase.rpc("mkhandi_acquire_worker_lease");
+  if (lockError) return json({ error: "Scanner lease unavailable: " + lockError.message }, 503);
+  if (!acquired) return json({ ok: true, skipped: "Another scanner invocation is still running", scanned_at: new Date().toISOString() }, 202);
+  try {
+    const { data: users, error } = await supabase.from("mkhandi_watchlists").select("user_id,symbols,enabled,scan_interval_minutes").eq("enabled", true);
+    if (error) return json({ error: error.message }, 500);
+    const results = [];
+    for (const user of users || []) results.push({ user_id: user.user_id, markets: await processUser(user) });
+    return json({ ok: true, scanned_at: new Date().toISOString(), results });
+  } finally {
+    await supabase.rpc("mkhandi_release_worker_lease");
+  }
 });
