@@ -623,8 +623,8 @@ function updateSignalLock(d,raw){
     }
   }
 
-  // Publication gate: technical BUY/SELL candidates are held privately until AI Deep Scan
-  // confirms direction, valid risk geometry, minimum confidence and minimum R:R.
+  // Event-driven lifecycle: only qualify candidates after the configured interval when no
+  // authenticated signal is active. Published signals are price-monitored, never re-scanned.
   if(!d.signalLock?.active && (raw.action==='BUY'||raw.action==='SELL')){
     raw.signalState='AI_QUALIFICATION_PENDING';
     raw.displayAction='WAIT';
