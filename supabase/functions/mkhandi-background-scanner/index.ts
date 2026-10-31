@@ -78,7 +78,7 @@ async function processUser(user: any) {
   const symbols = Array.isArray(user.symbols) ? user.symbols.slice(0, 10) : [];
   const results = [];
   for (const symbol of symbols) {
-    const marketName = symbol;
+    const marketName = user.market_names?.[symbol] || symbol;
     try {
       const [m15, h1] = await Promise.all([derivHistory(symbol, 900), derivHistory(symbol, 3600)]);
       const t15 = technical(m15), t1 = technical(h1);
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
   if (lockError) return json({ error: "Scanner lease unavailable: " + lockError.message }, 503);
   if (!acquired) return json({ ok: true, skipped: "Another scanner invocation is still running", scanned_at: new Date().toISOString() }, 202);
   try {
-    const { data: users, error } = await supabase.from("mkhandi_watchlists").select("user_id,symbols,enabled,scan_interval_minutes").eq("enabled", true);
+    const { data: users, error } = await supabase.from("mkhandi_watchlists").select("user_id,symbols,market_names,enabled,scan_interval_minutes").eq("enabled", true);
     if (error) return json({ error: error.message }, 500);
     const results = [];
     for (const user of users || []) results.push({ user_id: user.user_id, markets: await processUser(user) });
