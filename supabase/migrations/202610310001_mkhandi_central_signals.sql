@@ -91,6 +91,8 @@ drop policy if exists "Users manage own watchlist" on public.mkhandi_watchlists;
 create policy "Users manage own watchlist" on public.mkhandi_watchlists for all using (auth.uid()=user_id) with check (auth.uid()=user_id);
 drop policy if exists "Users read own signals" on public.mkhandi_signals;
 create policy "Users read own signals" on public.mkhandi_signals for select using (auth.uid()=user_id);
+drop policy if exists "Users import own local signals" on public.mkhandi_signals;
+create policy "Users import own local signals" on public.mkhandi_signals for insert with check (auth.uid()=user_id and source_id is not null);
 drop policy if exists "Users read own signal events" on public.mkhandi_signal_events;
 create policy "Users read own signal events" on public.mkhandi_signal_events for select using (auth.uid()=user_id);
 drop policy if exists "Users manage own push devices" on public.mkhandi_push_devices;
@@ -99,7 +101,8 @@ drop policy if exists "Users read scanner health" on public.mkhandi_scanner_heal
 create policy "Users read scanner health" on public.mkhandi_scanner_health for select to authenticated using (true);
 
 grant select,insert,update,delete on public.mkhandi_watchlists to authenticated;
-grant select on public.mkhandi_signals, public.mkhandi_signal_events, public.mkhandi_scanner_health to authenticated;
+grant select,insert on public.mkhandi_signals to authenticated;
+grant select on public.mkhandi_signal_events, public.mkhandi_scanner_health to authenticated;
 grant select,insert,update,delete on public.mkhandi_push_devices to authenticated;
 grant all on public.mkhandi_watchlists, public.mkhandi_signals, public.mkhandi_signal_events, public.mkhandi_push_devices, public.mkhandi_scanner_health, public.mkhandi_scanner_state to service_role;
 
