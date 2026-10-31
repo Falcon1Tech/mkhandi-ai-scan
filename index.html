@@ -1002,9 +1002,10 @@ async function syncCloudHistory(userId){
 }
 async function syncWatchlist(userId){
  const names=JSON.parse(localStorage.getItem("mkhandiGoldenList")||"[]").slice(0,10);
- const symbols=[...new Set(names.map(n=>window.MKHANDI_RESOLVE_SYMBOL?window.MKHANDI_RESOLVE_SYMBOL(n):null).filter(Boolean))];
+ const mapping=names.map(name=>({name,symbol:window.MKHANDI_RESOLVE_SYMBOL?window.MKHANDI_RESOLVE_SYMBOL(name):null})).filter(x=>x.symbol);
+ const symbols=[...new Set(mapping.map(x=>x.symbol))],market_names=Object.fromEntries(mapping.map(x=>[x.symbol,x.name]));
  const interval=Number(localStorage.getItem("mkhandiAiScanInterval"))===60?60:30;
- const {error}=await supabaseClient.from("mkhandi_watchlists").upsert({user_id:userId,symbols,scan_interval_minutes:interval,enabled:true},{onConflict:"user_id"});
+ const {error}=await supabaseClient.from("mkhandi_watchlists").upsert({user_id:userId,symbols,market_names,scan_interval_minutes:interval,enabled:true},{onConflict:"user_id"});
  if(error)console.warn("MKHANDI watchlist sync:",error.message);
 }
 async function refreshCloudHealth(){
