@@ -113,12 +113,14 @@ async function processUser(user: any) {
         (direction === "BUY" ? verdict.invalidation < verdict.entry && verdict.tp2 > verdict.entry : verdict.invalidation > verdict.entry && verdict.tp2 < verdict.entry);
       const rr = geometry ? Math.abs(verdict.tp2-verdict.entry)/Math.abs(verdict.entry-verdict.invalidation) : 0;
       if (!verdict.authenticated || !geometry || rr < 1.5 || Number(verdict.confidence) < 65) {
+        await supabase.from("mkhandi_scanner_health").upsert({ symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: new Date().toISOString(), last_scan_at: new Date().toISOString(), ai_status: "REJECTED", last_error: null });
         results.push({ symbol, state: "AI_REJECTED", confidence: verdict.confidence }); continue;
       }
       const row = { user_id: user.user_id, symbol, market_name: marketName, direction, entry: verdict.entry, invalidation: verdict.invalidation, tp1: verdict.tp1, tp2: verdict.tp2, confidence: verdict.confidence, rationale: String(verdict.rationale || "").slice(0, 1200), technical_snapshot: snapshot };
       const { data: signal, error } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
       if (error) { results.push({ symbol, state: "SIGNAL_INSERT_FAILED", error: error.message }); continue; }
       await supabase.from("mkhandi_signal_events").insert({ signal_id: signal.id, user_id: user.user_id, event_type: "AUTHENTICATED", price, details: { confidence: verdict.confidence, rr } });
+      await supabase.from("mkhandi_scanner_health").upsert({ symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: new Date().toISOString(), last_scan_at: new Date().toISOString(), ai_status: "AUTHENTICATED", last_error: null });
       await notify(user.user_id, signal);
       results.push({ symbol, state: "AUTHENTICATED", signal_id: signal.id });
     } catch (error) {
