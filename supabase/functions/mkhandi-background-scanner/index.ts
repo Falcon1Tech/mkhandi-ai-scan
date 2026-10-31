@@ -96,6 +96,14 @@ async function processUser(user: any) {
         results.push({ symbol, state: "ACTIVE_MONITORED", price });
         continue;
       }
+      const { data: scanState } = await supabase.from("mkhandi_scanner_state").select("last_qualification_at").eq("user_id", user.user_id).eq("symbol", symbol).maybeSingle();
+      const intervalMs = (Number(user.scan_interval_minutes) === 60 ? 60 : 30) * 60 * 1000;
+      const lastQualified = scanState?.last_qualification_at ? new Date(scanState.last_qualification_at).getTime() : 0;
+      if (Date.now() - lastQualified < intervalMs) {
+        results.push({ symbol, state: "WAITING_FOR_QUALIFICATION_WINDOW", price, next_scan_at: new Date(lastQualified + intervalMs).toISOString() });
+        continue;
+      }
+      await supabase.from("mkhandi_scanner_state").upsert({ user_id: user.user_id, symbol, last_qualification_at: new Date().toISOString(), last_quote: price, last_quote_at: new Date().toISOString() });
       const direction = t15.action;
       if (direction === "WAIT" || t1.action !== direction) { results.push({ symbol, state: "NO_CANDIDATE", price }); continue; }
       const snapshot = { m15: t15, h1: { ...t1, candles: t1.candles?.slice(-40) }, observed_at: new Date().toISOString() };
@@ -124,7 +132,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
   if (req.headers.get("x-mkhandi-worker-secret") !== env("MKHANDI_WORKER_SECRET")) return json({ error: "Unauthorized worker" }, 401);
   for (const key of ["SUPABASE_URL","SUPABASE_SERVICE_ROLE_KEY","OPENAI_API_KEY","MKHANDI_WORKER_SECRET"]) if (!env(key)) return json({ error: "Missing server secret: " + key }, 503);
-  const { data: users, error } = await supabase.from("mkhandi_watchlists").select("user_id,symbols,enabled").eq("enabled", true);
+  const { data: users, error } = await supabase.from("mkhandi_watchlists").select("user_id,symbols,enabled,scan_interval_minutes").eq("enabled", true);
   if (error) return json({ error: error.message }, 500);
   const results = [];
   for (const user of users || []) results.push({ user_id: user.user_id, markets: await processUser(user) });
