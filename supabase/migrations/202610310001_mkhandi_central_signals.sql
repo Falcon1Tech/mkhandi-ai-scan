@@ -4,6 +4,7 @@ create extension if not exists pgcrypto with schema extensions;
 create table if not exists public.mkhandi_watchlists (
   user_id uuid primary key references auth.users(id) on delete cascade,
   symbols text[] not null default array['BOOM1000','BOOM500','CRASH1000','CRASH5000'],
+  market_names jsonb not null default '{}'::jsonb,
   scan_interval_minutes integer not null default 30 check (scan_interval_minutes in (30,60)),
   enabled boolean not null default true,
   updated_at timestamptz not null default now()
@@ -119,7 +120,7 @@ as $
 declare acquired boolean := false;
 begin
   insert into public.mkhandi_worker_lease(id,locked_until)
-  values(1,now()+interval '90 seconds')
+  values(1,now()+interval '5 minutes')
   on conflict(id) do update set locked_until=excluded.locked_until
   where public.mkhandi_worker_lease.locked_until < now()
   returning true into acquired;
