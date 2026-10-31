@@ -30,12 +30,14 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
+        env:
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
         run: gradle --no-daemon assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mkhandi-ai-scan-android-v1.5.0-debug
+          name: mkhandi-ai-scan-android-v1.6.0-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
