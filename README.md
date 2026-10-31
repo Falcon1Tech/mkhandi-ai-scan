@@ -18,3 +18,13 @@ These are discretionary horizons, not time-based exit rules: M5 scalp 5–30 min
 
 ## Deployment
 This is the browser/PWA implementation. The native iOS prototype does not yet have live Deriv streaming or this background signal lifecycle. The Vercel API requires OPENAI_API_KEY configured server-side.
+
+
+## Android application — version 1.5.0
+- Package: `com.mkhandi.aiscan`; minimum Android 6.0 (API 23).
+- Version code 6 / version name 1.5.0.
+- Uses the live MKHANDI web application, so web scanner and account features are shared.
+- Improved reconnect recovery: when the app returns to the foreground after a network interruption, it checks connectivity and reloads the scanner if the offline panel is showing.
+- Updated Android user-agent and in-app version label.
+- GitHub Actions builds a version-labelled debug APK artifact. A signed release APK still requires release signing configuration.
+- Important: background AI monitoring is not guaranteed while Android suspends or closes the WebView. The scanner must remain active in the foreground for browser-based Deriv streaming and scheduled work.
