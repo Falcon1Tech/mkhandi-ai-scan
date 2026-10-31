@@ -57,6 +57,15 @@ create table if not exists public.mkhandi_push_devices (
   unique(user_id,provider,platform)
 );
 
+create table if not exists public.mkhandi_scanner_state (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  symbol text not null,
+  last_qualification_at timestamptz,
+  last_quote numeric,
+  last_quote_at timestamptz,
+  primary key(user_id,symbol)
+);
+
 create table if not exists public.mkhandi_scanner_health (
   symbol text primary key,
   market_name text not null,
@@ -74,6 +83,7 @@ alter table public.mkhandi_signals enable row level security;
 alter table public.mkhandi_signal_events enable row level security;
 alter table public.mkhandi_push_devices enable row level security;
 alter table public.mkhandi_scanner_health enable row level security;
+alter table public.mkhandi_scanner_state enable row level security;
 
 drop policy if exists "Users manage own watchlist" on public.mkhandi_watchlists;
 create policy "Users manage own watchlist" on public.mkhandi_watchlists for all using (auth.uid()=user_id) with check (auth.uid()=user_id);
@@ -89,26 +99,9 @@ create policy "Users read scanner health" on public.mkhandi_scanner_health for s
 grant select,insert,update,delete on public.mkhandi_watchlists to authenticated;
 grant select on public.mkhandi_signals, public.mkhandi_signal_events, public.mkhandi_scanner_health to authenticated;
 grant select,insert,update,delete on public.mkhandi_push_devices to authenticated;
-grant all on public.mkhandi_watchlists, public.mkhandi_signals, public.mkhandi_signal_events, public.mkhandi_push_devices, public.mkhandi_scanner_health to service_role;
+grant all on public.mkhandi_watchlists, public.mkhandi_signals, public.mkhandi_signal_events, public.mkhandi_push_devices, public.mkhandi_scanner_health, public.mkhandi_scanner_state to service_role;
 
--- The worker is invoked by Supabase Cron. Store these secrets in Supabase Vault:
--- mkhandi_worker_url = https://<project-ref>.supabase.co/functions/v1/mkhandi-background-scanner
--- mkhandi_worker_secret = a long random value also configured as MKHANDI_WORKER_SECRET
--- Schedule only after deploying the Edge Function and setting both Vault secrets.
-create extension if not exists pg_cron with schema extensions;
-create extension if not exists pg_net with schema extensions;
-select cron.unschedule(jobid) from cron.job where jobname='mkhandi-background-scanner-minute';
-select cron.schedule(
-  'mkhandi-background-scanner-minute',
-  '* * * * *',
-  $job$
-  select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name='mkhandi_worker_url' limit 1),
-    headers := jsonb_build_object(
-      'Content-Type','application/json',
-      'x-mkhandi-worker-secret',(select decrypted_secret from vault.decrypted_secrets where name='mkhandi_worker_secret' limit 1)
-    ),
-    body := jsonb_build_object('source','supabase-cron','requested_at',now())
-  );
-  $job$
-);
+-- Deploy supabase/functions/mkhandi-background-scanner before enabling the schedule.
+-- Store mkhandi_worker_url and mkhandi_worker_secret in Supabase Vault, then run
+-- supabase/enable-background-scanner-cron.sql. This prevents an empty cron job
+-- from being installed before credentials are configured.
