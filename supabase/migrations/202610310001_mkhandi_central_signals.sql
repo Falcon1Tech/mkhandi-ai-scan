@@ -106,6 +106,34 @@ grant select on public.mkhandi_signal_events, public.mkhandi_scanner_health to a
 grant select,insert,update,delete on public.mkhandi_push_devices to authenticated;
 grant all on public.mkhandi_watchlists, public.mkhandi_signals, public.mkhandi_signal_events, public.mkhandi_push_devices, public.mkhandi_scanner_health, public.mkhandi_scanner_state to service_role;
 
+
+-- A short lease prevents overlapping one-minute worker invocations.
+create table if not exists public.mkhandi_worker_lease (
+  id smallint primary key check (id=1),
+  locked_until timestamptz not null
+);
+alter table public.mkhandi_worker_lease enable row level security;
+create or replace function public.mkhandi_acquire_worker_lease()
+returns boolean language plpgsql security definer set search_path=public
+as $
+declare acquired boolean := false;
+begin
+  insert into public.mkhandi_worker_lease(id,locked_until)
+  values(1,now()+interval '90 seconds')
+  on conflict(id) do update set locked_until=excluded.locked_until
+  where public.mkhandi_worker_lease.locked_until < now()
+  returning true into acquired;
+  return coalesce(acquired,false);
+end;
+$;
+create or replace function public.mkhandi_release_worker_lease()
+returns void language sql security definer set search_path=public
+as $ update public.mkhandi_worker_lease set locked_until=now() where id=1; $;
+revoke all on function public.mkhandi_acquire_worker_lease() from public,anon,authenticated;
+revoke all on function public.mkhandi_release_worker_lease() from public,anon,authenticated;
+grant execute on function public.mkhandi_acquire_worker_lease() to service_role;
+grant execute on function public.mkhandi_release_worker_lease() to service_role;
+
 -- Deploy supabase/functions/mkhandi-background-scanner before enabling the schedule.
 -- Store mkhandi_worker_url and mkhandi_worker_secret in Supabase Vault, then run
 -- supabase/enable-background-scanner-cron.sql. This prevents an empty cron job
