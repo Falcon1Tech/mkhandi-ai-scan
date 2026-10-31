@@ -59,7 +59,7 @@ public class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " MKHANDIAndroid/1.4.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " MKHANDIAndroid/1.5.0");
         webView.setBackgroundColor(BACKGROUND);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.setVerticalScrollBarEnabled(false);
@@ -190,7 +190,7 @@ public class MainActivity extends Activity {
         panel.addView(detail, detailParams);
 
         Button retry = new Button(this);
-        retry.setText("TRY AGAIN");
+        retry.setText("RECONNECT");
         retry.setTextColor(Color.WHITE);
         retry.setTextSize(13);
         retry.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -210,7 +210,7 @@ public class MainActivity extends Activity {
         panel.addView(retry, retryParams);
 
         TextView version = new TextView(this);
-        version.setText("MKHANDI AI SCAN  •  ANDROID 1.4.0");
+        version.setText("MKHANDI AI SCAN  •  ANDROID 1.5.0");
         version.setTextColor(Color.rgb(105, 115, 132));
         version.setTextSize(10);
         version.setGravity(Gravity.CENTER);
@@ -263,7 +263,22 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (webView != null) webView.onResume();
+        if (webView != null) {
+            webView.onResume();
+            // Recover automatically when the user returns after an offline interruption.
+            try {
+                android.net.ConnectivityManager cm =
+                    (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo network = cm == null ? null : cm.getActiveNetworkInfo();
+                if (network != null && network.isConnected()
+                    && errorPanel != null && errorPanel.getVisibility() == View.VISIBLE) {
+                    errorPanel.setVisibility(View.GONE);
+                    progressBar.setProgress(4);
+                    progressBar.setVisibility(View.VISIBLE);
+                    webView.loadUrl(APP_URL);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
