@@ -487,7 +487,7 @@ if(m.msg_type==='active_symbols'){
     for(const [tf,g] of [['M5',300],['M15',900],['H1',3600]]){const tid=++req;send({ticks_history:sym.symbol,end:'latest',count:120,style:'candles',granularity:g,subscribe:1,req_id:tid},{kind:'candles',name,tf});}
     send({ticks:sym.symbol,subscribe:1,req_id:++req},{kind:'ticks',name});
   }
-  renderAll();return
+  renderAll();window.MKHANDI_SYNC_WATCHLIST?.();return
 }
 if(m.msg_type==='candles'){
   const q=m.req_id?requestMap[m.req_id]:null;const name=q?.name||Object.keys(market).find(n=>market[n].symbol===m.echo_req?.ticks_history);if(!name)return;
