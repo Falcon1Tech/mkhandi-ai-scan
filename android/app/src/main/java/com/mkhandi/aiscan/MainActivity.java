@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     private LinearLayout errorPanel;
     private ValueCallback<Uri[]> filePathCallback;
     private boolean pageLoaded = false;
+    private boolean oneSignalConfigured = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -148,6 +149,7 @@ public class MainActivity extends Activity {
         setContentView(root);
         if (BuildConfig.ONESIGNAL_APP_ID != null && !BuildConfig.ONESIGNAL_APP_ID.trim().isEmpty()) {
             OneSignal.initWithContext(this, BuildConfig.ONESIGNAL_APP_ID);
+            oneSignalConfigured = true;
         }
         if (savedInstanceState != null) {
             android.webkit.WebBackForwardList restored = webView.restoreState(savedInstanceState);
@@ -158,15 +160,16 @@ public class MainActivity extends Activity {
     }
 
     private final class MkhandiBridge {
+        @JavascriptInterface public boolean isConfigured() { return oneSignalConfigured; }
         @JavascriptInterface public void login(String externalId) {
-            if (externalId == null || externalId.trim().isEmpty()) return;
+            if (!oneSignalConfigured || externalId == null || externalId.trim().isEmpty()) return;
             runOnUiThread(() -> OneSignal.login(externalId));
         }
         @JavascriptInterface public void logout() {
-            runOnUiThread(OneSignal::logout);
+            if (oneSignalConfigured) runOnUiThread(OneSignal::logout);
         }
         @JavascriptInterface public void requestPushPermission() {
-            runOnUiThread(() -> OneSignal.getNotifications().requestPermission(false, Continue.none()));
+            if (oneSignalConfigured) runOnUiThread(() -> OneSignal.getNotifications().requestPermission(false, Continue.none()));
         }
     }
 
