@@ -10,7 +10,14 @@ android {
         applicationId 'com.mkhandi.aiscan'
         minSdk 23
         targetSdk 35
-        versionCode 6
-        versionName '1.5.0'
+        versionCode 7
+        versionName '1.6.0'
+        def oneSignalAppId = System.getenv('ONESIGNAL_APP_ID') ?: ''
+        buildConfigField 'String', 'ONESIGNAL_APP_ID', '"' + oneSignalAppId + '"'
     }
+    buildFeatures { buildConfig true }
+}
+
+dependencies {
+    implementation 'com.onesignal:OneSignal:5.9.2'
 }
