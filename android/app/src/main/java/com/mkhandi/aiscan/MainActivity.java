@@ -23,6 +23,9 @@ import android.widget.TextView;
 import android.widget.Button;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.webkit.JavascriptInterface;
+import com.onesignal.OneSignal;
+import com.onesignal.Continue;
 
 public class MainActivity extends Activity {
     private static final String APP_URL = "https://mkhandi-ai-scan.vercel.app";
@@ -59,7 +62,8 @@ public class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " MKHANDIAndroid/1.5.0");
+        webView.addJavascriptInterface(new MkhandiBridge(), "MKHANDI_NATIVE");
+        settings.setUserAgentString(settings.getUserAgentString() + " MKHANDIAndroid/1.6.0");
         webView.setBackgroundColor(BACKGROUND);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.setVerticalScrollBarEnabled(false);
@@ -142,11 +146,27 @@ public class MainActivity extends Activity {
         root.addView(errorPanel, new FrameLayout.LayoutParams(-1, -1));
 
         setContentView(root);
+        if (BuildConfig.ONESIGNAL_APP_ID != null && !BuildConfig.ONESIGNAL_APP_ID.trim().isEmpty()) {
+            OneSignal.initWithContext(this, BuildConfig.ONESIGNAL_APP_ID);
+        }
         if (savedInstanceState != null) {
             android.webkit.WebBackForwardList restored = webView.restoreState(savedInstanceState);
             if (restored == null || restored.getSize() == 0) webView.loadUrl(APP_URL);
         } else {
             webView.loadUrl(APP_URL);
+        }
+    }
+
+    private final class MkhandiBridge {
+        @JavascriptInterface public void login(String externalId) {
+            if (externalId == null || externalId.trim().isEmpty()) return;
+            runOnUiThread(() -> OneSignal.login(externalId));
+        }
+        @JavascriptInterface public void logout() {
+            runOnUiThread(OneSignal::logout);
+        }
+        @JavascriptInterface public void requestPushPermission() {
+            runOnUiThread(() -> OneSignal.getNotifications().requestPermission(false, Continue.none()));
         }
     }
 
@@ -210,7 +230,7 @@ public class MainActivity extends Activity {
         panel.addView(retry, retryParams);
 
         TextView version = new TextView(this);
-        version.setText("MKHANDI AI SCAN  •  ANDROID 1.5.0");
+        version.setText("MKHANDI AI SCAN  •  ANDROID 1.6.0");
         version.setTextColor(Color.rgb(105, 115, 132));
         version.setTextSize(10);
         version.setGravity(Gravity.CENTER);
