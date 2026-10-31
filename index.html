@@ -980,6 +980,8 @@ async function getOneSignal(){
 }
 async function syncLocalSignals(userId){
  const local=JSON.parse(localStorage.getItem("mkhandiSignalHistory")||"[]");
+ const outcomeRows=JSON.parse(localStorage.getItem("mkhandiOutcomeHistory")||"[]");
+ const outcomeById=new Map(outcomeRows.filter(x=>x.signalId).map(x=>[String(x.signalId),x]));
  for(const row of local){
   if(!row.signalId||!row.direction||!Number.isFinite(Number(row.entry))||!Number.isFinite(Number(row.invalidation)))continue;
   const entry=Number(row.entry),inv=Number(row.invalidation),distance=Math.abs(entry-inv);
@@ -987,7 +989,9 @@ async function syncLocalSignals(userId){
   const {data:existing}=await supabaseClient.from("mkhandi_signals").select("id").eq("user_id",userId).eq("source_id",String(row.signalId)).maybeSingle();
   if(existing)continue;
   const symbol=window.MKHANDI_RESOLVE_SYMBOL?.(row.name)||row.name;
-  await supabaseClient.from("mkhandi_signals").insert({user_id:userId,source_id:String(row.signalId),symbol,market_name:row.name||symbol,direction:row.direction,entry,invalidation:inv,tp1:row.tp1||null,tp2,confidence:Number(row.score)||50,rationale:"Imported from this account's existing browser signal journal.",technical_snapshot:{imported_from_local_journal:true},created_at:new Date(Number(row.createdAt)||Date.now()).toISOString()});
+  const review=outcomeById.get(String(row.signalId)),rawOutcome=String(review?.outcome||row.outcome||"").toUpperCase();
+  const status=["TP2_HIT","WON","WIN","TARGET_2_REACHED"].includes(rawOutcome)?"TP2_REACHED":(["SL_HIT","LOSS","LOST","INVALIDATED","STOP_LOSS"].includes(rawOutcome)?"INVALIDATED":"ACTIVE");
+  await supabaseClient.from("mkhandi_signals").insert({user_id:userId,source_id:String(row.signalId),symbol,market_name:row.name||symbol,direction:row.direction,status,entry,invalidation:inv,tp1:row.tp1||null,tp2,confidence:Number(row.score)||50,rationale:"Imported from this account's existing browser signal journal.",technical_snapshot:{imported_from_local_journal:true},created_at:new Date(Number(row.createdAt)||Date.now()).toISOString(),completed_at:status==="ACTIVE"?null:new Date(Number(review?.updatedAt)||Date.now()).toISOString(),completion_reason:status==="ACTIVE"?null:"Imported historical outcome: "+rawOutcome});
  }
 }
 async function syncCloudHistory(userId){
