@@ -167,7 +167,7 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     });
 
     const { data: active, error: activeError } = await supabase.from("mkhandi_signals").select("*")
-      .eq("user_id", userId).eq("symbol", symbol).eq("status", "ACTIVE").maybeSingle();
+      .eq("user_id", userId).eq("symbol", symbol).eq("status", "ACTIVE").like("source_id", "BG:%").maybeSingle();
     if (activeError) throw activeError;
     if (active) {
       const hitTp2 = active.direction === "BUY" ? Number(price) >= Number(active.tp2) : Number(price) <= Number(active.tp2);
@@ -266,7 +266,7 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     }
 
     const row = {
-      user_id: userId, source_id: candidate.id, symbol, market_name: marketName, direction,
+      user_id: userId, source_id: "BG:" + candidate.id, symbol, market_name: marketName, direction,
       entry: Number(verdict.entry), invalidation: Number(verdict.invalidation), tp1: Number(verdict.tp1) || null,
       tp2: Number(verdict.tp2), confidence, rationale: String(verdict.rationale || "").slice(0, 1200),
       technical_snapshot: snapshot
