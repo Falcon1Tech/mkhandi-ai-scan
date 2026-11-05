@@ -29,6 +29,7 @@ class DerivClient {
   private nextId = 714000;
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: number }>();
   private opened: Promise<void>;
+  private intentionalClose = false;
 
   constructor() {
     // Deriv's current public market-data WebSocket is unauthenticated and does
@@ -65,7 +66,7 @@ class DerivClient {
       };
       this.ws.onclose = (event) => {
         const closeReason = "Deriv WebSocket closed (code=" + event.code + ", reason=" + (event.reason || "none") + ", clean=" + event.wasClean + ")";
-        console.error(closeReason);
+        if (!this.intentionalClose) console.error(closeReason);
         if (!settled) {
           settled = true;
           clearTimeout(timer);
@@ -120,6 +121,7 @@ class DerivClient {
   }
 
   close() {
+    this.intentionalClose = true;
     try { this.ws.close(); } catch { /* already closed */ }
   }
 }
@@ -165,21 +167,37 @@ function technical(candles: Candle[]) {
 }
 
 async function authenticateWithAI(symbol: string, direction: string, snapshot: any) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { authorization: "Bearer " + env("OPENAI_API_KEY"), "content-type": "application/json" },
-    body: JSON.stringify({
-      model: env("OPENAI_MODEL") || "gpt-4.1",
-      input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. The proposed direction is " + direction + ". Authenticate only when H1 and M15 direction agree, the M15 trigger is valid, invalidation is structurally sensible, and projected TP2 reward/risk is at least 1.5. If any condition is missing, return authenticated=false and explain what must happen before the same waiting setup becomes valid. Do not invent a trade. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
-      text: { format: { type: "json_object" } },
-      max_output_tokens: 450
-    })
-  });
-  if (!response.ok) throw new Error("Background Deep AI Scan failed: " + response.status);
-  const data = await response.json();
-  const output = (data.output || []).flatMap((item: any) => item.content || []).find((item: any) => item.type === "output_text")?.text;
-  if (!output) throw new Error("AI returned no validation result");
-  return JSON.parse(output);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { authorization: "Bearer " + env("OPENAI_API_KEY"), "content-type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: env("OPENAI_MODEL") || "gpt-4.1",
+        input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. The proposed direction is " + direction + ". Authenticate only when H1 and M15 direction agree, the M15 trigger is valid, invalidation is structurally sensible, and projected TP2 reward/risk is at least 1.5. If any condition is missing, return authenticated=false and explain what must happen before the same waiting setup becomes valid. Do not invent a trade. Confidence must be a percentage from 0 to 100. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
+        text: { format: { type: "json_object" } },
+        max_output_tokens: 450
+      })
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      throw new Error("Background Deep AI Scan failed: " + response.status + " " + detail);
+    }
+    const data = await response.json();
+    const output = (data.output || []).flatMap((item: any) => item.content || []).find((item: any) => item.type === "output_text")?.text;
+    if (!output) throw new Error("AI returned no validation result");
+    const verdict = JSON.parse(output);
+    const rawConfidence = Number(verdict.confidence);
+    if (Number.isFinite(rawConfidence)) verdict.confidence = rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
+    return verdict;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Deep AI Scan timed out after 20 seconds");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function notify(userId: string, signal: any, event: "AUTHENTICATED" | "TP2_REACHED" | "INVALIDATED" = "AUTHENTICATED") {
@@ -294,11 +312,12 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       return { symbol, state: "WAITING", price, reason: waitReason, candidate_id: candidate.id };
     }
 
-    await supabase.from("mkhandi_signal_candidates").update({
+    const { error: qualifyingError } = await supabase.from("mkhandi_signal_candidates").update({
       market_name: marketName, direction, status: "AI_QUALIFYING", technical_snapshot: snapshot,
       last_seen_at: timestamp, last_ai_at: timestamp, next_ai_at: new Date(Date.now() + intervalMs).toISOString(),
       wait_reason: "Automatic background Deep AI Scan is validating this setup.", updated_at: timestamp
     }).eq("id", candidate.id);
+    if (qualifyingError) throw qualifyingError;
     await supabase.from("mkhandi_scanner_health").upsert({
       symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
       last_scan_at: timestamp, ai_status: "BACKGROUND DEEP AI SCAN", last_error: null, updated_at: timestamp
@@ -334,9 +353,12 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       return { symbol, state: "AI_WAITING", candidate_id: candidate.id, reason };
     }
 
-    const geometry = Number.isFinite(Number(verdict.entry)) && Number.isFinite(Number(verdict.invalidation)) && Number.isFinite(Number(verdict.tp2)) &&
-      (direction === "BUY" ? Number(verdict.invalidation) < Number(verdict.entry) && Number(verdict.tp2) > Number(verdict.entry)
-        : Number(verdict.invalidation) > Number(verdict.entry) && Number(verdict.tp2) < Number(verdict.entry));
+    const tp1 = Number(verdict.tp1);
+    const geometry = Number.isFinite(Number(verdict.entry)) && Number.isFinite(Number(verdict.invalidation)) &&
+      Number.isFinite(tp1) && Number.isFinite(Number(verdict.tp2)) &&
+      (direction === "BUY"
+        ? Number(verdict.invalidation) < Number(verdict.entry) && tp1 > Number(verdict.entry) && Number(verdict.tp2) >= tp1
+        : Number(verdict.invalidation) > Number(verdict.entry) && tp1 < Number(verdict.entry) && Number(verdict.tp2) <= tp1);
     const rr = geometry ? Math.abs(Number(verdict.tp2) - Number(verdict.entry)) / Math.abs(Number(verdict.entry) - Number(verdict.invalidation)) : 0;
     const confidence = Number(verdict.confidence);
     if (!verdict.authenticated || !geometry || rr < 1.5 || !Number.isFinite(confidence) || confidence < 65) {
