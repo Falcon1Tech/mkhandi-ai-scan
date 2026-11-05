@@ -966,7 +966,7 @@ const clientConfig = await fetch("/api/config",{cache:"no-store"}).then(r=>r.ok?
 const MKHANDI_SUPABASE_URL = clientConfig.supabaseUrl || "https://xrthszxomclwrleezkem.supabase.co";
 const MKHANDI_SUPABASE_ANON_KEY = clientConfig.supabaseAnonKey || "sb_publishable_UeJC9UkWWeaFrbOPbyWDNA_2dJZzkD4";
 const MKHANDI_ONESIGNAL_APP_ID = clientConfig.onesignalAppId || "";
-let oneSignalReady=false,oneSignalPromise=null,cloudSignalChannel=null;
+let oneSignalReady=false,oneSignalPromise=null,cloudSignalChannel=null,cloudStateTimer=null;
 const gate = document.getElementById("mkAuthGate");
 const app = document.getElementById("mkhandiApp");
 const form = document.getElementById("mkAuthForm");
@@ -1017,8 +1017,28 @@ async function syncWatchlist(userId){
  const mapping=names.map(name=>({name,symbol:window.MKHANDI_RESOLVE_SYMBOL?window.MKHANDI_RESOLVE_SYMBOL(name):null})).filter(x=>x.symbol);
  const symbols=[...new Set(mapping.map(x=>x.symbol))],market_names=Object.fromEntries(mapping.map(x=>[x.symbol,x.name]));
  const interval=Number(localStorage.getItem("mkhandiAiScanInterval"))===60?60:30;
- const {error}=await supabaseClient.from("mkhandi_watchlists").upsert({user_id:userId,symbols,market_names,scan_interval_minutes:interval,enabled:true},{onConflict:"user_id"});
+ const {error}=await supabaseClient.from("mkhandi_watchlists").upsert({user_id:userId,markets:names,symbols,market_names,scan_interval_minutes:interval,enabled:true},{onConflict:"user_id"});
  if(error)console.warn("MKHANDI watchlist sync:",error.message);
+}
+async function syncCloudSignalStates(userId){
+ const [{data:candidates,error:candidateError},{data:activeSignals,error:signalError}]=await Promise.all([
+  supabaseClient.from("mkhandi_signal_candidates").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100),
+  supabaseClient.from("mkhandi_signals").select("*").eq("user_id",userId).eq("status","ACTIVE").order("created_at",{ascending:false}).limit(100)
+ ]);
+ if(signalError)throw signalError;
+ if(candidateError){console.warn("MKHANDI background candidate state unavailable:",candidateError.message);window.MKHANDI_CLOUD_SIGNAL_STATES={};window.MKHANDI_RENDER_ALL?.();return;}
+ const activeById=new Map((activeSignals||[]).map(row=>[String(row.id),row]));
+ const states={};
+ for(const candidate of candidates||[]){
+  const name=candidate.market_name||candidate.symbol;
+  if(!states[name])states[name]={status:candidate.status,direction:candidate.direction,wait_reason:candidate.wait_reason,last_seen_at:candidate.last_seen_at};
+  const published=candidate.published_signal_id?activeById.get(String(candidate.published_signal_id)):null;
+  if(candidate.status==="AUTHENTICATED"&&published){
+   states[name]={status:"ACTIVE",direction:published.direction,entry:Number(published.entry),invalidation:Number(published.invalidation),tp1:published.tp1,tp2:Number(published.tp2),confidence:Number(published.confidence),signal_id:published.id,wait_reason:"Authenticated by automatic background Deep AI Scan."};
+  }
+ }
+ window.MKHANDI_CLOUD_SIGNAL_STATES=states;
+ window.MKHANDI_RENDER_ALL?.();
 }
 async function refreshCloudHealth(){
  const host=document.getElementById("mkHealthRows"),metrics=document.getElementById("mkHealthMetrics");
@@ -1032,9 +1052,14 @@ async function refreshCloudHealth(){
 async function afterLogin(session){
  if(!session?.user?.id)return;
  try{
-  await syncWatchlist(session.user.id);await syncCloudHistory(session.user.id);
+  await syncWatchlist(session.user.id);await syncCloudHistory(session.user.id);await syncCloudSignalStates(session.user.id);
   if(cloudSignalChannel)await supabaseClient.removeChannel(cloudSignalChannel);
-  cloudSignalChannel=supabaseClient.channel("mkhandi-signals-"+session.user.id).on("postgres_changes",{event:"*",schema:"public",table:"mkhandi_signals",filter:"user_id=eq."+session.user.id},()=>syncCloudHistory(session.user.id)).subscribe();
+  cloudSignalChannel=supabaseClient.channel("mkhandi-signals-"+session.user.id)
+   .on("postgres_changes",{event:"*",schema:"public",table:"mkhandi_signals",filter:"user_id=eq."+session.user.id},()=>{syncCloudHistory(session.user.id);syncCloudSignalStates(session.user.id);})
+   .on("postgres_changes",{event:"*",schema:"public",table:"mkhandi_signal_candidates",filter:"user_id=eq."+session.user.id},()=>syncCloudSignalStates(session.user.id))
+   .subscribe();
+  if(cloudStateTimer)clearInterval(cloudStateTimer);
+  cloudStateTimer=setInterval(()=>syncCloudSignalStates(session.user.id).catch(e=>console.warn("MKHANDI signal refresh:",e.message||e)),30000);
   await refreshCloudHealth();
  }catch(e){console.warn("MKHANDI cloud sync awaits database migration:",e.message||e);}
  try{if(window.MKHANDI_NATIVE?.isConfigured?.())window.MKHANDI_NATIVE.login(session.user.id);else if(MKHANDI_ONESIGNAL_APP_ID){const os=await getOneSignal();await os.login(session.user.id);}}catch(e){console.warn("OneSignal:",e.message||e);}
@@ -1044,8 +1069,8 @@ async function afterLogin(session){
  button.onclick=async()=>{try{if(window.MKHANDI_NATIVE?.isConfigured?.())window.MKHANDI_NATIVE.requestPushPermission();else{const os=await getOneSignal();await os.Notifications.requestPermission();}button.textContent="Alerts enabled";}catch(e){button.textContent="Enable alerts";console.warn(e);}};
 }
 window.MKHANDI_REFRESH_HEALTH=refreshCloudHealth;
-window.MKHANDI_SYNC_WATCHLIST=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncWatchlist(data.user.id));window.MKHANDI_SYNC_HISTORY=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncCloudHistory(data.user.id));
-function showApp(session){const signedIn=!!session;gate.hidden=signedIn;app.hidden=!signedIn;let accountButton=document.getElementById("mkAuthAccountButton");if(!accountButton){accountButton=document.createElement("button");accountButton.id="mkAuthAccountButton";accountButton.type="button";accountButton.style.cssText="position:fixed;right:12px;top:12px;z-index:99998;border:1px solid #34435a;border-radius:9px;background:#0d1524;color:#f8fafc;padding:8px 12px;font-weight:700;cursor:pointer";document.body.appendChild(accountButton);}if(signedIn){const email=session.user?.email||"Account";accountButton.textContent="Sign out · "+email;accountButton.title="Sign out of MKHANDI AI SCAN";accountButton.onclick=async()=>{accountButton.disabled=true;const {error}=await supabaseClient.auth.signOut();accountButton.disabled=false;if(error){authMessage("Sign out failed: "+error.message);return;}gate.hidden=false;app.hidden=true;setMode(false);};const header=document.querySelector(".top .online");if(header){header.innerHTML='<i class="dot"></i><span>'+email.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</span>';}}else{accountButton.textContent="Sign in";accountButton.title="Sign in to MKHANDI AI SCAN";accountButton.onclick=()=>{gate.hidden=false;app.hidden=true;};accountButton.style.display="none";}if(signedIn)void afterLogin(session);else{if(cloudSignalChannel){supabaseClient?.removeChannel(cloudSignalChannel);cloudSignalChannel=null;}if(window.MKHANDI_NATIVE?.isConfigured?.())window.MKHANDI_NATIVE.logout();else if(MKHANDI_ONESIGNAL_APP_ID&&oneSignalReady)getOneSignal().then(os=>os.logout()).catch(()=>{});}}
+window.MKHANDI_SYNC_WATCHLIST=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncWatchlist(data.user.id));window.MKHANDI_SYNC_HISTORY=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncCloudHistory(data.user.id));window.MKHANDI_SYNC_SIGNAL_STATES=()=>supabaseClient?.auth.getUser().then(({data})=>data.user&&syncCloudSignalStates(data.user.id));
+function showApp(session){const signedIn=!!session;gate.hidden=signedIn;app.hidden=!signedIn;let accountButton=document.getElementById("mkAuthAccountButton");if(!accountButton){accountButton=document.createElement("button");accountButton.id="mkAuthAccountButton";accountButton.type="button";accountButton.style.cssText="position:fixed;right:12px;top:12px;z-index:99998;border:1px solid #34435a;border-radius:9px;background:#0d1524;color:#f8fafc;padding:8px 12px;font-weight:700;cursor:pointer";document.body.appendChild(accountButton);}if(signedIn){const email=session.user?.email||"Account";accountButton.textContent="Sign out · "+email;accountButton.title="Sign out of MKHANDI AI SCAN";accountButton.onclick=async()=>{accountButton.disabled=true;const {error}=await supabaseClient.auth.signOut();accountButton.disabled=false;if(error){authMessage("Sign out failed: "+error.message);return;}gate.hidden=false;app.hidden=true;setMode(false);};const header=document.querySelector(".top .online");if(header){header.innerHTML='<i class="dot"></i><span>'+email.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</span>';}}else{accountButton.textContent="Sign in";accountButton.title="Sign in to MKHANDI AI SCAN";accountButton.onclick=()=>{gate.hidden=false;app.hidden=true;};accountButton.style.display="none";}if(signedIn)void afterLogin(session);else{if(cloudSignalChannel){supabaseClient?.removeChannel(cloudSignalChannel);cloudSignalChannel=null;}if(cloudStateTimer){clearInterval(cloudStateTimer);cloudStateTimer=null;}window.MKHANDI_CLOUD_SIGNAL_STATES={};window.MKHANDI_RENDER_ALL?.();if(window.MKHANDI_NATIVE?.isConfigured?.())window.MKHANDI_NATIVE.logout();else if(MKHANDI_ONESIGNAL_APP_ID&&oneSignalReady)getOneSignal().then(os=>os.logout()).catch(()=>{});}}
 function setMode(signup){isSignUp=signup;document.getElementById("mkAuthHeading").textContent=signup?"Create your account":"Welcome back";document.getElementById("mkAuthSubheading").textContent=signup?"Create a secure account to save your signals and journal across devices.":"Sign in to access your scanner, journal and performance history.";document.getElementById("mkAuthSubmit").textContent=signup?"Create account":"Sign in";document.getElementById("mkAuthToggle").textContent=signup?"Already have an account? Sign in":"Create account";document.getElementById("mkAuthPassword").autocomplete=signup?"new-password":"current-password";authMessage("");}
 document.getElementById("mkAuthToggle").addEventListener("click",()=>setMode(!isSignUp));
 if(!MKHANDI_SUPABASE_URL || !MKHANDI_SUPABASE_ANON_KEY){form.hidden=true;notice.hidden=false;app.hidden=true;gate.hidden=false;}
