@@ -242,6 +242,77 @@ async function ensureCandidate(userId: string, symbol: string, marketName: strin
   return data;
 }
 
+async function persistWaitingSignal(args: {
+  userId: string;
+  candidate: any;
+  marketName: string;
+  symbol: string;
+  snapshot: any;
+  verdict: any;
+  reason: string;
+  candidateStatus: "WAITING" | "AI_REJECTED";
+  candidateDirection: "WAIT" | "BUY" | "SELL";
+  timestamp: string;
+}) {
+  const rawConfidence = Number(args.verdict.confidence);
+  const confidenceValue = Number.isFinite(rawConfidence) && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
+  const reviewedVerdict = { ...args.verdict, confidence: Number.isFinite(confidenceValue) ? confidenceValue : null };
+  const row = {
+    user_id: args.userId,
+    source_id: "BG:" + args.candidate.id,
+    symbol: args.symbol,
+    market_name: args.marketName,
+    direction: "WAIT",
+    status: "WAITING",
+    entry: null,
+    invalidation: null,
+    tp1: null,
+    tp2: null,
+    confidence: Number.isFinite(confidenceValue) ? confidenceValue : null,
+    rationale: args.reason.slice(0, 1200),
+    technical_snapshot: args.snapshot,
+    authenticated_at: null,
+    updated_at: args.timestamp
+  };
+
+  let signal: any;
+  if (args.candidate.published_signal_id) {
+    const { data, error } = await supabase.from("mkhandi_signals").update(row)
+      .eq("id", args.candidate.published_signal_id).select("*").single();
+    if (error) throw error;
+    signal = data;
+  } else {
+    const { data, error } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
+    if (!error) {
+      signal = data;
+    } else if (error.code === "23505") {
+      const { data: existing, error: lookupError } = await supabase.from("mkhandi_signals").select("*")
+        .eq("user_id", args.userId).eq("source_id", "BG:" + args.candidate.id).maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!existing) throw error;
+      const { data: updated, error: updateError } = await supabase.from("mkhandi_signals").update(row)
+        .eq("id", existing.id).select("*").single();
+      if (updateError) throw updateError;
+      signal = updated;
+    } else {
+      throw error;
+    }
+  }
+
+  const { error: candidateError } = await supabase.from("mkhandi_signal_candidates").update({
+    status: args.candidateStatus,
+    direction: args.candidateDirection,
+    ai_result: reviewedVerdict,
+    published_signal_id: signal.id,
+    wait_reason: args.reason.slice(0, 1200),
+    technical_snapshot: args.snapshot,
+    last_seen_at: args.timestamp,
+    updated_at: args.timestamp
+  }).eq("id", args.candidate.id);
+  if (candidateError) throw candidateError;
+  return signal;
+}
+
 async function processMarket(user: any, market: { name: string; symbol: string }, deriv: DerivClient) {
   const { name: marketName, symbol } = market;
   const userId = user.user_id;
@@ -302,6 +373,16 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     const canRunAi = direction === "WAIT" ? dueByCadence : (directionChanged || triggerImproved || dueByCadence);
 
     if (!canRunAi) {
+      // Backfill a public WAIT signal for an already Deep-AI-reviewed candidate.
+      // This keeps the same signal row ready for in-place promotion later.
+      if (!candidate.published_signal_id && aiResult.authenticated === false) {
+        const publishedReason = String(candidate.wait_reason || aiResult.rationale || "Deep AI reviewed this candidate and left it in WAIT.");
+        await persistWaitingSignal({
+          userId, candidate, marketName, symbol, snapshot, verdict: aiResult, reason: publishedReason,
+          candidateStatus: candidate.status === "AI_REJECTED" ? "AI_REJECTED" : "WAITING",
+          candidateDirection: candidate.direction, timestamp
+        });
+      }
       const waitReason = direction === "WAIT"
         ? (t15.action !== "WAIT" ? "Waiting for H1 and M15 direction to agree." : t15.reason)
         : "Setup remains under observation. The same candidate will be rechecked automatically.";
@@ -337,7 +418,7 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       const reason = String(error).slice(0, 500);
       const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       const { error: retryUpdateError } = await supabase.from("mkhandi_signal_candidates").update({
-        status: "AI_REJECTED", ai_result: { error: reason }, next_ai_at: retryAt,
+        status: "AI_REJECTED", next_ai_at: retryAt,
         wait_reason: "Deep AI Scan could not finish. The same setup is queued for automatic retry in five minutes.",
         updated_at: nowIso()
       }).eq("id", candidate.id);
@@ -351,16 +432,16 @@ async function processMarket(user: any, market: { name: string; symbol: string }
 
     if (direction === "WAIT") {
       const reason = String(verdict.rationale || "Deep AI Scan completed. Waiting for a valid directional setup and trigger.");
-      await supabase.from("mkhandi_signal_candidates").update({
-        status: "WAITING", direction: "WAIT", ai_result: verdict,
-        wait_reason: reason.slice(0, 1200), technical_snapshot: snapshot,
-        last_seen_at: timestamp, updated_at: nowIso()
-      }).eq("id", candidate.id);
+      const waitingVerdict = { ...verdict, authenticated: false };
+      const signal = await persistWaitingSignal({
+        userId, candidate, marketName, symbol, snapshot, verdict: waitingVerdict, reason,
+        candidateStatus: "WAITING", candidateDirection: "WAIT", timestamp: nowIso()
+      });
       await supabase.from("mkhandi_scanner_health").upsert({
         symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
-        last_scan_at: timestamp, ai_status: "DEEP AI SCANNED · WAITING", last_error: null, updated_at: nowIso()
+        last_scan_at: timestamp, ai_status: "DEEP AI SCANNED · WAITING · PUBLISHED", last_error: null, updated_at: nowIso()
       });
-      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, reason };
+      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, signal_id: signal.id, reason };
     }
 
     const tp1 = Number(verdict.tp1);
@@ -371,44 +452,60 @@ async function processMarket(user: any, market: { name: string; symbol: string }
         : Number(verdict.invalidation) > Number(verdict.entry) && tp1 < Number(verdict.entry) && Number(verdict.tp2) <= tp1);
     const rr = geometry ? Math.abs(Number(verdict.tp2) - Number(verdict.entry)) / Math.abs(Number(verdict.entry) - Number(verdict.invalidation)) : 0;
     const confidence = Number(verdict.confidence);
-    if (!verdict.authenticated || !geometry || rr < 1.5 || !Number.isFinite(confidence) || confidence < 65) {
-      const reason = String(verdict.rationale || "Deep AI Scan has not confirmed a valid entry yet. Waiting for the setup to improve.");
-      await supabase.from("mkhandi_signal_candidates").update({
-        status: "AI_REJECTED", ai_result: verdict, wait_reason: reason.slice(0, 1200),
-        technical_snapshot: snapshot, last_seen_at: timestamp, updated_at: nowIso()
-      }).eq("id", candidate.id);
+    if (verdict.authenticated !== true || !geometry || rr < 1.5 || !Number.isFinite(confidence) || confidence < 65) {
+      const baseReason = String(verdict.rationale || "Deep AI Scan has not confirmed a valid entry yet. Waiting for the setup to improve.");
+      const systemReason = !geometry
+        ? "System risk gate: entry, invalidation, TP1 and TP2 geometry is incomplete or invalid. "
+        : rr < 1.5
+          ? "System risk gate: TP2 reward/risk is below 1.5. "
+          : confidence < 65
+            ? "System risk gate: AI confidence is below 65%. "
+            : "";
+      const reason = systemReason + baseReason;
+      const rejectedVerdict = { ...verdict, authenticated: false, rationale: reason };
+      const signal = await persistWaitingSignal({
+        userId, candidate, marketName, symbol, snapshot, verdict: rejectedVerdict, reason,
+        candidateStatus: "AI_REJECTED", candidateDirection: direction, timestamp: nowIso()
+      });
       await supabase.from("mkhandi_scanner_health").upsert({
         symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
-        last_scan_at: timestamp, ai_status: "WAITING · AI NOT YET VALID", last_error: null, updated_at: nowIso()
+        last_scan_at: timestamp, ai_status: "WAITING · AI NOT YET VALID · PUBLISHED", last_error: null, updated_at: nowIso()
       });
-      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, confidence };
+      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, signal_id: signal.id, confidence };
     }
 
-    const row = {
-      user_id: userId, source_id: "BG:" + candidate.id, symbol, market_name: marketName, direction,
-      entry: Number(verdict.entry), invalidation: Number(verdict.invalidation), tp1: Number(verdict.tp1) || null,
-      tp2: Number(verdict.tp2), confidence, rationale: String(verdict.rationale || "").slice(0, 1200),
-      technical_snapshot: snapshot
-    };
     if (verdict.authenticated !== true) {
       throw new Error("Deep AI verdict did not return authenticated=true; publication blocked");
     }
-    const { data: signal, error: insertError } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
-    if (insertError) {
-      if (insertError.code === "23505") {
-        const { data: existingSignal, error: existingError } = await supabase.from("mkhandi_signals").select("*")
+    const row = {
+      user_id: userId, source_id: "BG:" + candidate.id, symbol, market_name: marketName, direction,
+      status: "ACTIVE", entry: Number(verdict.entry), invalidation: Number(verdict.invalidation),
+      tp1: Number(verdict.tp1), tp2: Number(verdict.tp2), confidence,
+      rationale: String(verdict.rationale || "").slice(0, 1200),
+      technical_snapshot: snapshot, authenticated_at: nowIso(), updated_at: nowIso()
+    };
+    let signal: any;
+    if (candidate.published_signal_id) {
+      const { data, error } = await supabase.from("mkhandi_signals").update(row)
+        .eq("id", candidate.published_signal_id).select("*").single();
+      if (error) throw error;
+      signal = data;
+    } else {
+      const { data, error } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
+      if (!error) {
+        signal = data;
+      } else if (error.code === "23505") {
+        const { data: existing, error: lookupError } = await supabase.from("mkhandi_signals").select("*")
           .eq("user_id", userId).eq("source_id", "BG:" + candidate.id).maybeSingle();
-        if (existingError) throw existingError;
-        if (existingSignal) {
-          const { error: candidateUpdateError } = await supabase.from("mkhandi_signal_candidates").update({
-            status: "AUTHENTICATED", published_signal_id: existingSignal.id, ai_result: verdict,
-            wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
-          }).eq("id", candidate.id);
-          if (candidateUpdateError) throw candidateUpdateError;
-          return { symbol, state: "ALREADY_PUBLISHED", signal_id: existingSignal.id, candidate_id: candidate.id };
-        }
+        if (lookupError) throw lookupError;
+        if (!existing) throw error;
+        const { data: updated, error: updateError } = await supabase.from("mkhandi_signals").update(row)
+          .eq("id", existing.id).select("*").single();
+        if (updateError) throw updateError;
+        signal = updated;
+      } else {
+        throw error;
       }
-      throw insertError;
     }
     await supabase.from("mkhandi_signal_events").insert({
       signal_id: signal.id, user_id: userId, event_type: "AUTHENTICATED", price,
