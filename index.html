@@ -1006,7 +1006,7 @@ async function syncCloudHistory(userId){
  const {data,error}=await supabaseClient.from("mkhandi_signals").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(500);
  if(error)throw error;
  const key="mkhandiSignalHistory",local=JSON.parse(localStorage.getItem(key)||"[]"),map=new Map(local.map(x=>[String(x.signalId),x]));
- for(const s of (data||[]).filter(row=>row.status!=="WAITING"))map.set(s.source_id||s.id,{...(map.get(s.source_id||s.id)||{}),signalId:s.source_id||s.id,name:s.market_name,direction:s.direction,entry:Number(s.entry),invalidation:Number(s.invalidation),tp1:s.tp1,tp2:s.tp2,score:Number(s.confidence),createdAt:new Date(s.created_at).getTime(),outcome:s.status==="ACTIVE"?"OPEN":s.status==="TP2_REACHED"?"TP2_HIT":s.status==="INVALIDATED"?"SL_HIT":"OPEN",source:"SUPABASE"});
+ for(const s of (data||[]).filter(row=>row.status!=="WAITING"))map.set(s.source_id||s.id,{...(map.get(s.source_id||s.id)||{}),signalId:s.source_id||s.id,name:s.market_name,direction:s.direction,entry:Number(s.entry),invalidation:Number(s.invalidation),tp1:s.tp1,tp2:s.tp2,score:Number(s.confidence),createdAt:new Date(s.created_at).getTime(),entryReachedAt:s.entry_reached_at?new Date(s.entry_reached_at).getTime():null,tp1ReachedAt:s.tp1_reached_at?new Date(s.tp1_reached_at).getTime():null,completedAt:s.completed_at?new Date(s.completed_at).getTime():null,completionReason:s.completion_reason||null,outcome:s.status==="ACTIVE"?"OPEN":s.status==="TP2_REACHED"?"TP2_HIT":s.status==="INVALIDATED"?"INVALIDATED":s.status==="CANCELLED"?"CANCELLED":"OPEN",source:"SUPABASE"});
  localStorage.setItem(key,JSON.stringify([...map.values()].slice(0,500)));
  if(typeof window.renderPerformance==="function")window.renderPerformance();
  if(typeof window.renderDashboardActivity==="function")window.renderDashboardActivity();
@@ -1022,7 +1022,7 @@ async function syncWatchlist(userId){
 async function syncCloudSignalStates(userId){
  const [{data:candidates,error:candidateError},{data:activeSignals,error:signalError}]=await Promise.all([
   supabaseClient.from("mkhandi_signal_candidates").select("*").eq("user_id",userId).order("updated_at",{ascending:false}).limit(100),
-  supabaseClient.from("mkhandi_signals").select("*").eq("user_id",userId).eq("status","ACTIVE").order("created_at",{ascending:false}).limit(100)
+  supabaseClient.from("mkhandi_signals").select("*").eq("user_id",userId).in("status",["ACTIVE","TP2_REACHED","INVALIDATED","CANCELLED"]).order("created_at",{ascending:false}).limit(100)
  ]);
  if(signalError)throw signalError;
  if(candidateError){console.warn("MKHANDI background candidate state unavailable:",candidateError.message);window.MKHANDI_CLOUD_SIGNAL_STATES={};window.MKHANDI_RENDER_ALL?.();return;}
@@ -1032,8 +1032,8 @@ async function syncCloudSignalStates(userId){
   const name=candidate.market_name||candidate.symbol;
   if(!states[name])states[name]={status:candidate.status,direction:candidate.status==="AUTHENTICATED"?candidate.direction:"WAIT",wait_reason:candidate.wait_reason,last_seen_at:candidate.last_seen_at};
   const published=candidate.published_signal_id?activeById.get(String(candidate.published_signal_id)):null;
-  if(candidate.status==="AUTHENTICATED"&&published){
-   states[name]={status:"ACTIVE",direction:published.direction,entry:Number(published.entry),invalidation:Number(published.invalidation),tp1:published.tp1,tp2:Number(published.tp2),confidence:Number(published.confidence),signal_id:published.id,wait_reason:"Authenticated by automatic background Deep AI Scan."};
+  if((candidate.status==="AUTHENTICATED"||candidate.status==="CLOSED")&&published){
+   states[name]={status:published.status,direction:published.direction,entry:Number(published.entry),invalidation:Number(published.invalidation),tp1:published.tp1,tp2:Number(published.tp2),confidence:Number(published.confidence),signal_id:published.id,entry_reached_at:published.entry_reached_at,tp1_reached_at:published.tp1_reached_at,completed_at:published.completed_at,completion_reason:published.completion_reason,wait_reason:published.status==="ACTIVE"?"Authenticated by automatic background Deep AI Scan.":published.completion_reason};
   }
  }
  window.MKHANDI_CLOUD_SIGNAL_STATES=states;
