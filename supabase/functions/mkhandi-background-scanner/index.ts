@@ -24,47 +24,94 @@ type Candle = { epoch: number; open: number; high: number; low: number; close: n
 const nowIso = () => new Date().toISOString();
 const normalizeName = (value: unknown) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-async function derivActiveSymbols(): Promise<any[]> {
-  const ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
-  const requestId = 714001;
-  return await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { ws.close(); reject(new Error("Deriv active_symbols request timed out")); }, 15000);
-    ws.onopen = () => ws.send(JSON.stringify({ active_symbols: "brief", req_id: requestId }));
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.req_id !== requestId) return;
-      clearTimeout(timeout); ws.close();
-      if (msg.error) return reject(new Error(msg.error.message || "Deriv symbol catalogue unavailable"));
-      resolve(Array.isArray(msg.active_symbols) ? msg.active_symbols : []);
-    };
-    ws.onerror = () => { clearTimeout(timeout); reject(new Error("Deriv symbol catalogue connection failed")); };
-  });
+class DerivClient {
+  private ws: WebSocket;
+  private nextId = 714000;
+  private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: number }>();
+  private opened: Promise<void>;
+
+  constructor() {
+    this.ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
+    this.opened = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Deriv WebSocket connection timed out")), 10000);
+      this.ws.onopen = () => { clearTimeout(timer); resolve(); };
+      this.ws.onerror = () => { clearTimeout(timer); reject(new Error("Deriv WebSocket connection failed")); };
+      this.ws.onmessage = (event) => {
+        let message: any;
+        try { message = JSON.parse(event.data); } catch { return; }
+        const id = Number(message.req_id);
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.pending.delete(id);
+        if (message.error) pending.reject(new Error(message.error.message || "Deriv API error"));
+        else pending.resolve(message);
+      };
+      this.ws.onclose = () => {
+        for (const [id, item] of this.pending) {
+          clearTimeout(item.timer);
+          item.reject(new Error("Deriv WebSocket closed before request completed"));
+          this.pending.delete(id);
+        }
+      };
+    });
+  }
+
+  async request(payload: Record<string, unknown>, timeoutMs = 18000): Promise<any> {
+    await this.opened;
+    if (this.ws.readyState !== WebSocket.OPEN) throw new Error("Deriv WebSocket is not open");
+    const id = ++this.nextId;
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("Deriv request timed out: " + String(payload.ticks_history || payload.active_symbols || "request")));
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
+      try { this.ws.send(JSON.stringify({ ...payload, req_id: id })); }
+      catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  async activeSymbols(): Promise<any[]> {
+    const result = await this.request({ active_symbols: "brief" }, 15000);
+    if (!Array.isArray(result.active_symbols) || !result.active_symbols.length) {
+      throw new Error("Deriv returned an empty active-symbol catalogue");
+    }
+    return result.active_symbols;
+  }
+
+  async history(symbol: string, granularity: number): Promise<Candle[]> {
+    const result = await this.request({
+      ticks_history: symbol, end: "latest", count: 120, style: "candles", granularity
+    });
+    const candles = (result.candles || []).map((c: any) => ({
+      epoch: Number(c.epoch), open: Number(c.open), high: Number(c.high),
+      low: Number(c.low), close: Number(c.close)
+    }));
+    if (candles.length < 60) throw new Error("Deriv returned fewer than 60 candles for " + symbol + " (" + granularity + ")");
+    return candles;
+  }
+
+  close() {
+    try { this.ws.close(); } catch { /* already closed */ }
+  }
 }
 
 function resolveSymbol(marketName: string, active: any[], legacy: Record<string, string>) {
   const target = normalizeName(marketName);
-  const exact = active.find((item) => [item.display_name, item.underlying_symbol_name, item.symbol].some((v) => normalizeName(v) === target));
-  if (exact) return String(exact.underlying_symbol || exact.symbol || "");
+  const exact = active.find((item) => [
+    item.display_name, item.underlying_symbol_name, item.market_display_name
+  ].some((v) => normalizeName(v) === target));
+  // Deriv's 'symbol' is the tradeable contract code. Do not substitute the
+  // descriptive underlying_symbol_name field when a contract symbol exists.
+  if (exact?.symbol) return String(exact.symbol);
   const legacyMatch = Object.entries(legacy).find(([symbol, name]) => normalizeName(name) === target);
   if (legacyMatch) return legacyMatch[0];
   return KNOWN_SYMBOLS[marketName] || "";
-}
-
-async function derivHistory(symbol: string, granularity: number): Promise<Candle[]> {
-  const ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
-  const requestId = Math.floor(Math.random() * 1e9);
-  return await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { ws.close(); reject(new Error("Deriv history request timed out")); }, 18000);
-    ws.onopen = () => ws.send(JSON.stringify({ ticks_history: symbol, end: "latest", count: 120, style: "candles", granularity, req_id: requestId }));
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.req_id !== requestId) return;
-      clearTimeout(timeout); ws.close();
-      if (msg.error) return reject(new Error(msg.error.message || "Deriv API error"));
-      resolve((msg.candles || []).map((c: any) => ({ epoch: Number(c.epoch), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) })));
-    };
-    ws.onerror = () => { clearTimeout(timeout); reject(new Error("Deriv WebSocket connection failed")); };
-  });
 }
 
 const ema = (values: number[], period: number) => {
@@ -154,12 +201,14 @@ async function ensureCandidate(userId: string, symbol: string, marketName: strin
   return data;
 }
 
-async function processMarket(user: any, market: { name: string; symbol: string }) {
+async function processMarket(user: any, market: { name: string; symbol: string }, deriv: DerivClient) {
   const { name: marketName, symbol } = market;
   const userId = user.user_id;
   const timestamp = nowIso();
+  let derivConnected = false;
   try {
-    const [m15, h1] = await Promise.all([derivHistory(symbol, 900), derivHistory(symbol, 3600)]);
+    const [m15, h1] = await Promise.all([deriv.history(symbol, 900), deriv.history(symbol, 3600)]);
+    derivConnected = true;
     const t15 = technical(m15), t1 = technical(h1);
     const price = m15[m15.length - 1]?.close ?? null;
     await supabase.from("mkhandi_scanner_health").upsert({
@@ -319,13 +368,13 @@ async function processMarket(user: any, market: { name: string; symbol: string }
   } catch (error) {
     const reason = String(error).slice(0, 500);
     await supabase.from("mkhandi_scanner_health").upsert({
-      symbol, market_name: marketName, deriv_connected: false, last_error: reason, updated_at: nowIso()
+      symbol, market_name: marketName, deriv_connected: derivConnected, last_scan_at: nowIso(), last_error: reason, updated_at: nowIso()
     });
     return { symbol, state: "ERROR", error: reason.slice(0, 250) };
   }
 }
 
-async function processUser(user: any, activeSymbols: any[]) {
+async function processUser(user: any, activeSymbols: any[], deriv: DerivClient) {
   const legacy = (user.market_names || {}) as Record<string, string>;
   const requestedNames = Array.isArray(user.markets) && user.markets.length
     ? user.markets.slice(0, 10)
@@ -335,8 +384,11 @@ async function processUser(user: any, activeSymbols: any[]) {
   await supabase.from("mkhandi_watchlists").update({
     symbols: markets.map((item: any) => item.symbol), market_names: marketNames, markets: requestedNames, updated_at: nowIso()
   }).eq("user_id", user.user_id);
-  const results = [];
-  for (const market of markets) results.push(await processMarket(user, market));
+  const results = await mapWithConcurrency(markets, 3, async (market) => {
+    const result = await processMarket(user, market, deriv);
+    console.log("Market scan result:", JSON.stringify({ user_id: user.user_id, market: market.name, ...result }));
+    return result;
+  });
   for (const name of requestedNames) {
     if (!markets.some((item: any) => item.name === name)) {
       const symbol = KNOWN_SYMBOLS[name] || "UNRESOLVED:" + normalizeName(name).replace(/ /g, "_");
@@ -347,6 +399,20 @@ async function processUser(user: any, activeSymbols: any[]) {
       results.push({ market: name, state: "UNRESOLVED" });
     }
   }
+  return results;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index]);
+    }
+  });
+  await Promise.all(runners);
   return results;
 }
 
@@ -371,19 +437,24 @@ async function runBackgroundScanner() {
       return;
     }
 
-    const activeSymbols = await derivActiveSymbols();
-    console.log("Deriv active-symbol catalogue loaded:", activeSymbols.length);
+    const deriv = new DerivClient();
+    try {
+      const activeSymbols = await deriv.activeSymbols();
+      console.log("Deriv active-symbol catalogue loaded:", activeSymbols.length);
 
-    const results = [];
-    for (const user of users) {
-      const markets = await processUser(user, activeSymbols);
-      results.push({ user_id: user.user_id, markets });
+      const results = [];
+      for (const user of users) {
+        const markets = await processUser(user, activeSymbols, deriv);
+        results.push({ user_id: user.user_id, markets });
+      }
+      console.log("Background scan completed:", JSON.stringify({
+        users: users.length,
+        markets_processed: results.reduce((total, item) => total + item.markets.length, 0),
+        results
+      }));
+    } finally {
+      deriv.close();
     }
-    console.log("Background scan completed:", JSON.stringify({
-      users: users.length,
-      markets_processed: results.reduce((total, item) => total + item.markets.length, 0),
-      results
-    }));
   } catch (error) {
     console.error("Background scanner run failed:", String(error));
   } finally {
