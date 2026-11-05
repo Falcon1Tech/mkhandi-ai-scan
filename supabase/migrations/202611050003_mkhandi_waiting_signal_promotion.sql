@@ -62,3 +62,19 @@ using (
 
 comment on policy "Users read own Deep AI reviewed signals" on public.mkhandi_signals
 is 'Only expose AI-reviewed WAITING signals or AI-authenticated active/closed signals linked to their matching candidate.';
+
+-- Normalize legacy fractional AI confidence values to the 0-100 percentage scale.
+update public.mkhandi_signals
+set confidence = confidence * 100, updated_at = now()
+where source_id like 'BG:%' and direction = 'WAIT' and status = 'WAITING'
+  and confidence between 0 and 1;
+
+update public.mkhandi_signal_candidates
+set ai_result = jsonb_set(
+  ai_result, '{confidence}',
+  to_jsonb((ai_result ->> 'confidence')::numeric * 100),
+  true
+), updated_at = now()
+where ai_result ? 'confidence'
+  and jsonb_typeof(ai_result -> 'confidence') = 'number'
+  and (ai_result ->> 'confidence')::numeric between 0 and 1;
