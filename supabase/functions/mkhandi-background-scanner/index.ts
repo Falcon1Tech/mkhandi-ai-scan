@@ -202,14 +202,14 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       previousM15.trigger !== t15.trigger
     );
     const dueByCadence = !lastAiAt || Date.now() - lastAiAt >= intervalMs;
-    const canRunAi = direction !== "WAIT" && (directionChanged || triggerImproved || dueByCadence);
+    const canRunAi = direction === "WAIT" ? dueByCadence : (directionChanged || triggerImproved || dueByCadence);
 
     if (!canRunAi) {
       const waitReason = direction === "WAIT"
         ? (t15.action !== "WAIT" ? "Waiting for H1 and M15 direction to agree." : t15.reason)
         : "Setup remains under observation. The same candidate will be rechecked automatically.";
       const { error } = await supabase.from("mkhandi_signal_candidates").update({
-        market_name: marketName, direction: direction === "WAIT" ? (t15.action === "WAIT" ? "WAIT" : t15.action) : direction,
+        market_name: marketName, direction,
         status: candidate.status === "AI_REJECTED" ? "AI_REJECTED" : "WAITING",
         technical_snapshot: snapshot, wait_reason: waitReason, last_seen_at: timestamp, updated_at: timestamp
       }).eq("id", candidate.id);
@@ -246,6 +246,20 @@ async function processMarket(user: any, market: { name: string; symbol: string }
         last_scan_at: timestamp, ai_status: "AI RETRY SCHEDULED", last_error: reason, updated_at: nowIso()
       });
       return { symbol, state: "AI_RETRY_SCHEDULED", candidate_id: candidate.id };
+    }
+
+    if (direction === "WAIT") {
+      const reason = String(verdict.rationale || "Deep AI Scan completed. Waiting for a valid directional setup and trigger.");
+      await supabase.from("mkhandi_signal_candidates").update({
+        status: "WAITING", direction: "WAIT", ai_result: verdict,
+        wait_reason: reason.slice(0, 1200), technical_snapshot: snapshot,
+        last_seen_at: timestamp, updated_at: nowIso()
+      }).eq("id", candidate.id);
+      await supabase.from("mkhandi_scanner_health").upsert({
+        symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
+        last_scan_at: timestamp, ai_status: "DEEP AI SCANNED · WAITING", last_error: null, updated_at: nowIso()
+      });
+      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, reason };
     }
 
     const geometry = Number.isFinite(Number(verdict.entry)) && Number.isFinite(Number(verdict.invalidation)) && Number.isFinite(Number(verdict.tp2)) &&
