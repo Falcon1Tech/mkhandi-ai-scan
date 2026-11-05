@@ -77,11 +77,12 @@ function technical(candles: Candle[]) {
   const closes = candles.map((c) => c.close);
   if (closes.length < 60) return { action: "WAIT", bias: "NEUTRAL", score: 0, reason: "Waiting for at least 60 candles", price: closes.at(-1) ?? null, atr: 0, trigger: "NONE" };
   const fast = ema(closes.slice(-50), 9), slow = ema(closes.slice(-50), 21);
-  const priorFast = ema(closes.slice(-51, -1), 9), priorSlow = ema(closes.slice(-51, -1), 21);
   const last = candles[candles.length - 1], previous = candles[candles.length - 2];
   const bias = fast > slow ? "BULLISH" : fast < slow ? "BEARISH" : "NEUTRAL";
-  const bullish = fast > slow && priorFast <= priorSlow && last.close > previous.high;
-  const bearish = fast < slow && priorFast >= priorSlow && last.close < previous.low;
+  // Keep the setup monitorable after the crossover candle: a same-direction trend
+  // plus a fresh candle break can activate the existing WAIT candidate later.
+  const bullish = fast > slow && last.close > previous.high;
+  const bearish = fast < slow && last.close < previous.low;
   const range = candles.slice(-20);
   const atr = range.reduce((sum, candle, index) => index ? sum + Math.max(candle.high - candle.low, Math.abs(candle.high - range[index - 1].close), Math.abs(candle.low - range[index - 1].close)) : sum, 0) / Math.max(1, range.length - 1);
   const score = Math.min(100, Math.round(50 + Math.abs(fast - slow) / Math.max(atr, Number.EPSILON) * 20));
