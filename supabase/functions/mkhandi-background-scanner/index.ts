@@ -31,9 +31,9 @@ class DerivClient {
   private opened: Promise<void>;
 
   constructor() {
-    const appId = env("DERIV_APP_ID") || "1089";
-    if (!env("DERIV_APP_ID")) console.warn("DERIV_APP_ID is not configured; using Deriv's test-only app_id 1089.");
-    this.ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=" + encodeURIComponent(appId));
+    // Deriv's current public market-data WebSocket is unauthenticated and does
+    // not require a legacy app_id. Use it for symbols and historical candles.
+    this.ws = new WebSocket("wss://api.derivws.com/trading/v1/options/ws/public");
     this.opened = new Promise((resolve, reject) => {
       let settled = false;
       const timer = setTimeout(() => {
