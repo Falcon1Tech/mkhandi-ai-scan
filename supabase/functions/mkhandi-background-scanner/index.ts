@@ -24,47 +24,119 @@ type Candle = { epoch: number; open: number; high: number; low: number; close: n
 const nowIso = () => new Date().toISOString();
 const normalizeName = (value: unknown) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-async function derivActiveSymbols(): Promise<any[]> {
-  const ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
-  const requestId = 714001;
-  return await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { ws.close(); reject(new Error("Deriv active_symbols request timed out")); }, 15000);
-    ws.onopen = () => ws.send(JSON.stringify({ active_symbols: "brief", req_id: requestId }));
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.req_id !== requestId) return;
-      clearTimeout(timeout); ws.close();
-      if (msg.error) return reject(new Error(msg.error.message || "Deriv symbol catalogue unavailable"));
-      resolve(Array.isArray(msg.active_symbols) ? msg.active_symbols : []);
-    };
-    ws.onerror = () => { clearTimeout(timeout); reject(new Error("Deriv symbol catalogue connection failed")); };
-  });
+class DerivClient {
+  private ws: WebSocket;
+  private nextId = 714000;
+  private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: number }>();
+  private opened: Promise<void>;
+  private intentionalClose = false;
+
+  constructor() {
+    // Deriv's current public market-data WebSocket is unauthenticated and does
+    // not require a legacy app_id. Use it for symbols and historical candles.
+    this.ws = new WebSocket("wss://api.derivws.com/trading/v1/options/ws/public");
+    this.opened = new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Deriv WebSocket connection timed out; check outbound WebSocket access and DERIV_APP_ID"));
+        try { this.ws.close(); } catch { /* ignore */ }
+      }, 10000);
+      this.ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      this.ws.onerror = (event) => {
+        const detail = (event as ErrorEvent)?.message || "no browser/runtime detail";
+        console.error("Deriv WebSocket transport error:", detail);
+      };
+      this.ws.onmessage = (event) => {
+        let message: any;
+        try { message = JSON.parse(event.data); } catch { return; }
+        const id = Number(message.req_id);
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        this.pending.delete(id);
+        if (message.error) pending.reject(new Error(message.error.message || "Deriv API error"));
+        else pending.resolve(message);
+      };
+      this.ws.onclose = (event) => {
+        const closeReason = "Deriv WebSocket closed (code=" + event.code + ", reason=" + (event.reason || "none") + ", clean=" + event.wasClean + ")";
+        if (!this.intentionalClose) console.error(closeReason);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error(closeReason));
+        }
+        for (const [id, item] of this.pending) {
+          clearTimeout(item.timer);
+          item.reject(new Error("Deriv WebSocket closed before request completed"));
+          this.pending.delete(id);
+        }
+      };
+    });
+  }
+
+  async request(payload: Record<string, unknown>, timeoutMs = 18000): Promise<any> {
+    await this.opened;
+    if (this.ws.readyState !== WebSocket.OPEN) throw new Error("Deriv WebSocket is not open");
+    const id = ++this.nextId;
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("Deriv request timed out: " + String(payload.ticks_history || payload.active_symbols || "request")));
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
+      try { this.ws.send(JSON.stringify({ ...payload, req_id: id })); }
+      catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  async activeSymbols(): Promise<any[]> {
+    const result = await this.request({ active_symbols: "brief" }, 15000);
+    if (!Array.isArray(result.active_symbols) || !result.active_symbols.length) {
+      throw new Error("Deriv returned an empty active-symbol catalogue");
+    }
+    return result.active_symbols;
+  }
+
+  async history(symbol: string, granularity: number): Promise<Candle[]> {
+    const result = await this.request({
+      ticks_history: symbol, end: "latest", count: 120, style: "candles", granularity
+    });
+    const candles = (result.candles || []).map((c: any) => ({
+      epoch: Number(c.epoch), open: Number(c.open), high: Number(c.high),
+      low: Number(c.low), close: Number(c.close)
+    }));
+    if (candles.length < 60) throw new Error("Deriv returned fewer than 60 candles for " + symbol + " (" + granularity + ")");
+    return candles;
+  }
+
+  close() {
+    this.intentionalClose = true;
+    try { this.ws.close(); } catch { /* already closed */ }
+  }
 }
 
 function resolveSymbol(marketName: string, active: any[], legacy: Record<string, string>) {
   const target = normalizeName(marketName);
-  const exact = active.find((item) => [item.display_name, item.underlying_symbol_name, item.symbol].some((v) => normalizeName(v) === target));
-  if (exact) return String(exact.underlying_symbol || exact.symbol || "");
+  const exact = active.find((item) => [
+    item.display_name, item.underlying_symbol_name, item.market_display_name
+  ].some((v) => normalizeName(v) === target));
+  // Deriv's 'symbol' is the tradeable contract code. Do not substitute the
+  // descriptive underlying_symbol_name field when a contract symbol exists.
+  if (exact?.symbol) return String(exact.symbol);
   const legacyMatch = Object.entries(legacy).find(([symbol, name]) => normalizeName(name) === target);
   if (legacyMatch) return legacyMatch[0];
   return KNOWN_SYMBOLS[marketName] || "";
-}
-
-async function derivHistory(symbol: string, granularity: number): Promise<Candle[]> {
-  const ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
-  const requestId = Math.floor(Math.random() * 1e9);
-  return await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { ws.close(); reject(new Error("Deriv history request timed out")); }, 18000);
-    ws.onopen = () => ws.send(JSON.stringify({ ticks_history: symbol, end: "latest", count: 120, style: "candles", granularity, req_id: requestId }));
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.req_id !== requestId) return;
-      clearTimeout(timeout); ws.close();
-      if (msg.error) return reject(new Error(msg.error.message || "Deriv API error"));
-      resolve((msg.candles || []).map((c: any) => ({ epoch: Number(c.epoch), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) })));
-    };
-    ws.onerror = () => { clearTimeout(timeout); reject(new Error("Deriv WebSocket connection failed")); };
-  });
 }
 
 const ema = (values: number[], period: number) => {
@@ -95,21 +167,37 @@ function technical(candles: Candle[]) {
 }
 
 async function authenticateWithAI(symbol: string, direction: string, snapshot: any) {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { authorization: "Bearer " + env("OPENAI_API_KEY"), "content-type": "application/json" },
-    body: JSON.stringify({
-      model: env("OPENAI_MODEL") || "gpt-4.1",
-      input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. The proposed direction is " + direction + ". Authenticate only when H1 and M15 direction agree, the M15 trigger is valid, invalidation is structurally sensible, and projected TP2 reward/risk is at least 1.5. If any condition is missing, return authenticated=false and explain what must happen before the same waiting setup becomes valid. Do not invent a trade. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
-      text: { format: { type: "json_object" } },
-      max_output_tokens: 450
-    })
-  });
-  if (!response.ok) throw new Error("Background Deep AI Scan failed: " + response.status);
-  const data = await response.json();
-  const output = (data.output || []).flatMap((item: any) => item.content || []).find((item: any) => item.type === "output_text")?.text;
-  if (!output) throw new Error("AI returned no validation result");
-  return JSON.parse(output);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { authorization: "Bearer " + env("OPENAI_API_KEY"), "content-type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: env("OPENAI_MODEL") || "gpt-4.1",
+        input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. The proposed direction is " + direction + ". Authenticate only when H1 and M15 direction agree, the M15 trigger is valid, invalidation is structurally sensible, and projected TP2 reward/risk is at least 1.5. If any condition is missing, return authenticated=false and explain what must happen before the same waiting setup becomes valid. Do not invent a trade. Confidence must be a percentage from 0 to 100. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
+        text: { format: { type: "json_object" } },
+        max_output_tokens: 450
+      })
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      throw new Error("Background Deep AI Scan failed: " + response.status + " " + detail);
+    }
+    const data = await response.json();
+    const output = (data.output || []).flatMap((item: any) => item.content || []).find((item: any) => item.type === "output_text")?.text;
+    if (!output) throw new Error("AI returned no validation result");
+    const verdict = JSON.parse(output);
+    const rawConfidence = Number(verdict.confidence);
+    if (Number.isFinite(rawConfidence)) verdict.confidence = rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
+    return verdict;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("Deep AI Scan timed out after 20 seconds");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function notify(userId: string, signal: any, event: "AUTHENTICATED" | "TP2_REACHED" | "INVALIDATED" = "AUTHENTICATED") {
@@ -154,12 +242,85 @@ async function ensureCandidate(userId: string, symbol: string, marketName: strin
   return data;
 }
 
-async function processMarket(user: any, market: { name: string; symbol: string }) {
+async function persistWaitingSignal(args: {
+  userId: string;
+  candidate: any;
+  marketName: string;
+  symbol: string;
+  snapshot: any;
+  verdict: any;
+  reason: string;
+  candidateStatus: "WAITING" | "AI_REJECTED";
+  candidateDirection: "WAIT" | "BUY" | "SELL";
+  timestamp: string;
+}) {
+  const rawConfidence = Number(args.verdict.confidence);
+  const confidenceValue = Number.isFinite(rawConfidence) && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
+  const reviewedVerdict = { ...args.verdict, confidence: Number.isFinite(confidenceValue) ? confidenceValue : null };
+  const row = {
+    user_id: args.userId,
+    source_id: "BG:" + args.candidate.id,
+    symbol: args.symbol,
+    market_name: args.marketName,
+    direction: "WAIT",
+    status: "WAITING",
+    entry: null,
+    invalidation: null,
+    tp1: null,
+    tp2: null,
+    confidence: Number.isFinite(confidenceValue) ? confidenceValue : null,
+    rationale: args.reason.slice(0, 1200),
+    technical_snapshot: args.snapshot,
+    authenticated_at: null,
+    updated_at: args.timestamp
+  };
+
+  let signal: any;
+  if (args.candidate.published_signal_id) {
+    const { data, error } = await supabase.from("mkhandi_signals").update(row)
+      .eq("id", args.candidate.published_signal_id).select("*").single();
+    if (error) throw error;
+    signal = data;
+  } else {
+    const { data, error } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
+    if (!error) {
+      signal = data;
+    } else if (error.code === "23505") {
+      const { data: existing, error: lookupError } = await supabase.from("mkhandi_signals").select("*")
+        .eq("user_id", args.userId).eq("source_id", "BG:" + args.candidate.id).maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!existing) throw error;
+      const { data: updated, error: updateError } = await supabase.from("mkhandi_signals").update(row)
+        .eq("id", existing.id).select("*").single();
+      if (updateError) throw updateError;
+      signal = updated;
+    } else {
+      throw error;
+    }
+  }
+
+  const { error: candidateError } = await supabase.from("mkhandi_signal_candidates").update({
+    status: args.candidateStatus,
+    direction: args.candidateDirection,
+    ai_result: reviewedVerdict,
+    published_signal_id: signal.id,
+    wait_reason: args.reason.slice(0, 1200),
+    technical_snapshot: args.snapshot,
+    last_seen_at: args.timestamp,
+    updated_at: args.timestamp
+  }).eq("id", args.candidate.id);
+  if (candidateError) throw candidateError;
+  return signal;
+}
+
+async function processMarket(user: any, market: { name: string; symbol: string }, deriv: DerivClient) {
   const { name: marketName, symbol } = market;
   const userId = user.user_id;
   const timestamp = nowIso();
+  let derivConnected = false;
   try {
-    const [m15, h1] = await Promise.all([derivHistory(symbol, 900), derivHistory(symbol, 3600)]);
+    const [m15, h1] = await Promise.all([deriv.history(symbol, 900), deriv.history(symbol, 3600)]);
+    derivConnected = true;
     const t15 = technical(m15), t1 = technical(h1);
     const price = m15[m15.length - 1]?.close ?? null;
     await supabase.from("mkhandi_scanner_health").upsert({
@@ -171,21 +332,61 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       .eq("user_id", userId).eq("symbol", symbol).eq("status", "ACTIVE").like("source_id", "BG:%").maybeSingle();
     if (activeError) throw activeError;
     if (active) {
-      const hitTp2 = active.direction === "BUY" ? Number(price) >= Number(active.tp2) : Number(price) <= Number(active.tp2);
-      const invalid = active.direction === "BUY" ? Number(price) <= Number(active.invalidation) : Number(price) >= Number(active.invalidation);
-      if (hitTp2 || invalid) {
-        const event = hitTp2 ? "TP2_REACHED" : "INVALIDATED";
+      const candle = m15[m15.length - 1];
+      const candleHigh = Number(candle?.high ?? price);
+      const candleLow = Number(candle?.low ?? price);
+      // OHLC touch checks are more reliable than close-only checks. If both
+      // TP2 and invalidation occur inside one candle, record invalidation
+      // conservatively because candle ordering cannot be reconstructed.
+      const hitTp2 = active.direction === "BUY" ? candleHigh >= Number(active.tp2) : candleLow <= Number(active.tp2);
+      const invalid = active.direction === "BUY" ? candleLow <= Number(active.invalidation) : candleHigh >= Number(active.invalidation);
+      if (invalid || hitTp2) {
+        const event = invalid ? "INVALIDATED" : "TP2_REACHED";
         const { error } = await supabase.from("mkhandi_signals").update({
           status: event, completed_at: timestamp,
-          completion_reason: hitTp2 ? "TP2 reached by server-side price monitor" : "Invalidation breached by server-side price monitor",
+          completion_reason: invalid
+            ? "Invalidation level touched by server-side M15 candle monitor"
+            : "TP2 level touched by server-side M15 candle monitor",
           updated_at: timestamp
         }).eq("id", active.id);
         if (error) throw error;
-        await supabase.from("mkhandi_signal_events").insert({ signal_id: active.id, user_id: userId, event_type: event, price, details: { source: "supabase-background-worker" } });
+        const { error: eventError } = await supabase.from("mkhandi_signal_events").upsert({
+          signal_id: active.id, user_id: userId, event_type: event, price,
+          details: { source: "supabase-background-worker", candle_epoch: candle?.epoch, candle_high: candleHigh, candle_low: candleLow }
+        }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+        if (eventError) throw eventError;
         await notify(userId, active, event);
-        await supabase.from("mkhandi_signal_candidates").update({ status: "CLOSED", wait_reason: "Previous authenticated signal completed: " + event, updated_at: timestamp }).eq("published_signal_id", active.id);
+        const { error: candidateCloseError } = await supabase.from("mkhandi_signal_candidates").update({
+          status: "CLOSED", wait_reason: "Previous authenticated signal completed: " + event, updated_at: timestamp
+        }).eq("published_signal_id", active.id);
+        if (candidateCloseError) throw candidateCloseError;
+      } else {
+        const entryTouched = candleLow <= Number(active.entry) && candleHigh >= Number(active.entry);
+        const tp1Touched = active.tp1 != null && candleLow <= Number(active.tp1) && candleHigh >= Number(active.tp1);
+        if (entryTouched && !active.entry_reached_at) {
+          const { error: entryUpdateError } = await supabase.from("mkhandi_signals").update({
+            entry_reached_at: timestamp, updated_at: timestamp
+          }).eq("id", active.id);
+          if (entryUpdateError) throw entryUpdateError;
+          const { error: entryEventError } = await supabase.from("mkhandi_signal_events").upsert({
+            signal_id: active.id, user_id: userId, event_type: "ENTRY_REACHED", price,
+            details: { source: "supabase-background-worker", candle_epoch: candle?.epoch, entry: active.entry }
+          }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+          if (entryEventError) throw entryEventError;
+        }
+        if (tp1Touched && !active.tp1_reached_at) {
+          const { error: tp1UpdateError } = await supabase.from("mkhandi_signals").update({
+            tp1_reached_at: timestamp, updated_at: timestamp
+          }).eq("id", active.id);
+          if (tp1UpdateError) throw tp1UpdateError;
+          const { error: tp1EventError } = await supabase.from("mkhandi_signal_events").upsert({
+            signal_id: active.id, user_id: userId, event_type: "TP1_REACHED", price,
+            details: { source: "supabase-background-worker", candle_epoch: candle?.epoch, tp1: active.tp1 }
+          }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+          if (tp1EventError) throw tp1EventError;
+        }
       }
-      return { symbol, state: hitTp2 ? "TP2_REACHED" : invalid ? "INVALIDATED" : "ACTIVE_MONITORED", price };
+      return { symbol, state: invalid ? "INVALIDATED" : hitTp2 ? "TP2_REACHED" : "ACTIVE_MONITORED", price };
     }
 
     const candidate = await ensureCandidate(userId, symbol, marketName);
@@ -193,6 +394,10 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     const direction = (t15.action === "BUY" || t15.action === "SELL") && t1.bias === (t15.action === "BUY" ? "BULLISH" : "BEARISH") ? t15.action : "WAIT";
     const intervalMs = (Number(user.scan_interval_minutes) === 60 ? 60 : 30) * 60 * 1000;
     const lastAiAt = candidate.last_ai_at ? new Date(candidate.last_ai_at).getTime() : 0;
+    const nextAiAt = candidate.next_ai_at ? new Date(candidate.next_ai_at).getTime() : 0;
+    const aiResult = candidate.ai_result || {};
+    const hasAiVerdict = typeof aiResult.authenticated === "boolean";
+    const hasAiError = typeof aiResult.error === "string";
     const previousSnapshot = candidate.technical_snapshot || {};
     const previousM15 = previousSnapshot.m15 || {};
     const directionChanged = direction !== "WAIT" && direction !== candidate.direction;
@@ -201,10 +406,23 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       (Number(t15.score) >= Number(previousM15.score || 0) + 8) ||
       previousM15.trigger !== t15.trigger
     );
-    const dueByCadence = !lastAiAt || Date.now() - lastAiAt >= intervalMs;
+    // A candidate left AI_QUALIFYING without a verdict must be retried immediately.
+    // Transient AI errors retry after five minutes; genuine verdicts follow the configured cadence.
+    const dueByCadence = (!hasAiVerdict && !hasAiError) ||
+      (hasAiError ? (!nextAiAt || Date.now() >= nextAiAt) : (!nextAiAt ? (!lastAiAt || Date.now() - lastAiAt >= intervalMs) : Date.now() >= nextAiAt));
     const canRunAi = direction === "WAIT" ? dueByCadence : (directionChanged || triggerImproved || dueByCadence);
 
     if (!canRunAi) {
+      // Backfill a public WAIT signal for an already Deep-AI-reviewed candidate.
+      // This keeps the same signal row ready for in-place promotion later.
+      if (!candidate.published_signal_id && aiResult.authenticated === false) {
+        const publishedReason = String(candidate.wait_reason || aiResult.rationale || "Deep AI reviewed this candidate and left it in WAIT.");
+        await persistWaitingSignal({
+          userId, candidate, marketName, symbol, snapshot, verdict: aiResult, reason: publishedReason,
+          candidateStatus: candidate.status === "AI_REJECTED" ? "AI_REJECTED" : "WAITING",
+          candidateDirection: candidate.direction, timestamp
+        });
+      }
       const waitReason = direction === "WAIT"
         ? (t15.action !== "WAIT" ? "Waiting for H1 and M15 direction to agree." : t15.reason)
         : "Setup remains under observation. The same candidate will be rechecked automatically.";
@@ -222,11 +440,12 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       return { symbol, state: "WAITING", price, reason: waitReason, candidate_id: candidate.id };
     }
 
-    await supabase.from("mkhandi_signal_candidates").update({
+    const { error: qualifyingError } = await supabase.from("mkhandi_signal_candidates").update({
       market_name: marketName, direction, status: "AI_QUALIFYING", technical_snapshot: snapshot,
       last_seen_at: timestamp, last_ai_at: timestamp, next_ai_at: new Date(Date.now() + intervalMs).toISOString(),
       wait_reason: "Automatic background Deep AI Scan is validating this setup.", updated_at: timestamp
     }).eq("id", candidate.id);
+    if (qualifyingError) throw qualifyingError;
     await supabase.from("mkhandi_scanner_health").upsert({
       symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
       last_scan_at: timestamp, ai_status: "BACKGROUND DEEP AI SCAN", last_error: null, updated_at: timestamp
@@ -237,10 +456,13 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       verdict = await authenticateWithAI(marketName, direction, snapshot);
     } catch (error) {
       const reason = String(error).slice(0, 500);
-      await supabase.from("mkhandi_signal_candidates").update({
-        status: "AI_REJECTED", ai_result: { error: reason }, wait_reason: "Deep AI Scan could not finish. The same setup remains queued for its next automatic review.",
+      const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const { error: retryUpdateError } = await supabase.from("mkhandi_signal_candidates").update({
+        status: "AI_REJECTED", next_ai_at: retryAt,
+        wait_reason: "Deep AI Scan could not finish. The same setup is queued for automatic retry in five minutes.",
         updated_at: nowIso()
       }).eq("id", candidate.id);
+      if (retryUpdateError) throw retryUpdateError;
       await supabase.from("mkhandi_scanner_health").upsert({
         symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
         last_scan_at: timestamp, ai_status: "AI RETRY SCHEDULED", last_error: reason, updated_at: nowIso()
@@ -250,66 +472,91 @@ async function processMarket(user: any, market: { name: string; symbol: string }
 
     if (direction === "WAIT") {
       const reason = String(verdict.rationale || "Deep AI Scan completed. Waiting for a valid directional setup and trigger.");
-      await supabase.from("mkhandi_signal_candidates").update({
-        status: "WAITING", direction: "WAIT", ai_result: verdict,
-        wait_reason: reason.slice(0, 1200), technical_snapshot: snapshot,
-        last_seen_at: timestamp, updated_at: nowIso()
-      }).eq("id", candidate.id);
+      const waitingVerdict = { ...verdict, authenticated: false };
+      const signal = await persistWaitingSignal({
+        userId, candidate, marketName, symbol, snapshot, verdict: waitingVerdict, reason,
+        candidateStatus: "WAITING", candidateDirection: "WAIT", timestamp: nowIso()
+      });
       await supabase.from("mkhandi_scanner_health").upsert({
         symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
-        last_scan_at: timestamp, ai_status: "DEEP AI SCANNED · WAITING", last_error: null, updated_at: nowIso()
+        last_scan_at: timestamp, ai_status: "DEEP AI SCANNED · WAITING · PUBLISHED", last_error: null, updated_at: nowIso()
       });
-      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, reason };
+      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, signal_id: signal.id, reason };
     }
 
-    const geometry = Number.isFinite(Number(verdict.entry)) && Number.isFinite(Number(verdict.invalidation)) && Number.isFinite(Number(verdict.tp2)) &&
-      (direction === "BUY" ? Number(verdict.invalidation) < Number(verdict.entry) && Number(verdict.tp2) > Number(verdict.entry)
-        : Number(verdict.invalidation) > Number(verdict.entry) && Number(verdict.tp2) < Number(verdict.entry));
+    const tp1 = Number(verdict.tp1);
+    const geometry = Number.isFinite(Number(verdict.entry)) && Number.isFinite(Number(verdict.invalidation)) &&
+      Number.isFinite(tp1) && Number.isFinite(Number(verdict.tp2)) &&
+      (direction === "BUY"
+        ? Number(verdict.invalidation) < Number(verdict.entry) && tp1 > Number(verdict.entry) && Number(verdict.tp2) >= tp1
+        : Number(verdict.invalidation) > Number(verdict.entry) && tp1 < Number(verdict.entry) && Number(verdict.tp2) <= tp1);
     const rr = geometry ? Math.abs(Number(verdict.tp2) - Number(verdict.entry)) / Math.abs(Number(verdict.entry) - Number(verdict.invalidation)) : 0;
     const confidence = Number(verdict.confidence);
-    if (!verdict.authenticated || !geometry || rr < 1.5 || !Number.isFinite(confidence) || confidence < 65) {
-      const reason = String(verdict.rationale || "Deep AI Scan has not confirmed a valid entry yet. Waiting for the setup to improve.");
-      await supabase.from("mkhandi_signal_candidates").update({
-        status: "AI_REJECTED", ai_result: verdict, wait_reason: reason.slice(0, 1200),
-        technical_snapshot: snapshot, last_seen_at: timestamp, updated_at: nowIso()
-      }).eq("id", candidate.id);
+    if (verdict.authenticated !== true || !geometry || rr < 1.5 || !Number.isFinite(confidence) || confidence < 65) {
+      const baseReason = String(verdict.rationale || "Deep AI Scan has not confirmed a valid entry yet. Waiting for the setup to improve.");
+      const systemReason = !geometry
+        ? "System risk gate: entry, invalidation, TP1 and TP2 geometry is incomplete or invalid. "
+        : rr < 1.5
+          ? "System risk gate: TP2 reward/risk is below 1.5. "
+          : confidence < 65
+            ? "System risk gate: AI confidence is below 65%. "
+            : "";
+      const reason = systemReason + baseReason;
+      const rejectedVerdict = { ...verdict, authenticated: false, rationale: reason };
+      const signal = await persistWaitingSignal({
+        userId, candidate, marketName, symbol, snapshot, verdict: rejectedVerdict, reason,
+        candidateStatus: "AI_REJECTED", candidateDirection: direction, timestamp: nowIso()
+      });
       await supabase.from("mkhandi_scanner_health").upsert({
         symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
-        last_scan_at: timestamp, ai_status: "WAITING · AI NOT YET VALID", last_error: null, updated_at: nowIso()
+        last_scan_at: timestamp, ai_status: "WAITING · AI NOT YET VALID · PUBLISHED", last_error: null, updated_at: nowIso()
       });
-      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, confidence };
+      return { symbol, state: "AI_WAITING", candidate_id: candidate.id, signal_id: signal.id, confidence };
     }
 
+    if (verdict.authenticated !== true) {
+      throw new Error("Deep AI verdict did not return authenticated=true; publication blocked");
+    }
     const row = {
       user_id: userId, source_id: "BG:" + candidate.id, symbol, market_name: marketName, direction,
-      entry: Number(verdict.entry), invalidation: Number(verdict.invalidation), tp1: Number(verdict.tp1) || null,
-      tp2: Number(verdict.tp2), confidence, rationale: String(verdict.rationale || "").slice(0, 1200),
-      technical_snapshot: snapshot
+      status: "ACTIVE", entry: Number(verdict.entry), invalidation: Number(verdict.invalidation),
+      tp1: Number(verdict.tp1), tp2: Number(verdict.tp2), confidence,
+      rationale: String(verdict.rationale || "").slice(0, 1200),
+      technical_snapshot: snapshot, authenticated_at: nowIso(), updated_at: nowIso()
     };
-    const { data: signal, error: insertError } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
-    if (insertError) {
-      if (insertError.code === "23505") {
-        const { data: existingSignal, error: existingError } = await supabase.from("mkhandi_signals").select("*")
+    let signal: any;
+    if (candidate.published_signal_id) {
+      const { data, error } = await supabase.from("mkhandi_signals").update(row)
+        .eq("id", candidate.published_signal_id).select("*").single();
+      if (error) throw error;
+      signal = data;
+    } else {
+      const { data, error } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
+      if (!error) {
+        signal = data;
+      } else if (error.code === "23505") {
+        const { data: existing, error: lookupError } = await supabase.from("mkhandi_signals").select("*")
           .eq("user_id", userId).eq("source_id", "BG:" + candidate.id).maybeSingle();
-        if (existingError) throw existingError;
-        if (existingSignal) {
-          await supabase.from("mkhandi_signal_candidates").update({
-            status: "AUTHENTICATED", published_signal_id: existingSignal.id, ai_result: verdict,
-            wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
-          }).eq("id", candidate.id);
-          return { symbol, state: "ALREADY_PUBLISHED", signal_id: existingSignal.id, candidate_id: candidate.id };
-        }
+        if (lookupError) throw lookupError;
+        if (!existing) throw error;
+        const { data: updated, error: updateError } = await supabase.from("mkhandi_signals").update(row)
+          .eq("id", existing.id).select("*").single();
+        if (updateError) throw updateError;
+        signal = updated;
+      } else {
+        throw error;
       }
-      throw insertError;
     }
-    await supabase.from("mkhandi_signal_events").insert({
+    const { error: authenticatedEventError } = await supabase.from("mkhandi_signal_events").upsert({
       signal_id: signal.id, user_id: userId, event_type: "AUTHENTICATED", price,
       details: { confidence, risk_reward: Number(rr.toFixed(2)), source: "supabase-background-deep-ai" }
-    });
-    await supabase.from("mkhandi_signal_candidates").update({
+    }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+    if (authenticatedEventError) throw authenticatedEventError;
+    const { error: candidatePublishError } = await supabase.from("mkhandi_signal_candidates").update({
       status: "AUTHENTICATED", published_signal_id: signal.id, ai_result: verdict,
       wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
     }).eq("id", candidate.id);
+    if (candidatePublishError) throw candidatePublishError;
     await supabase.from("mkhandi_scanner_health").upsert({
       symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
       last_scan_at: timestamp, ai_status: "AUTHENTICATED · PUBLISHED", last_error: null, updated_at: nowIso()
@@ -319,13 +566,13 @@ async function processMarket(user: any, market: { name: string; symbol: string }
   } catch (error) {
     const reason = String(error).slice(0, 500);
     await supabase.from("mkhandi_scanner_health").upsert({
-      symbol, market_name: marketName, deriv_connected: false, last_error: reason, updated_at: nowIso()
+      symbol, market_name: marketName, deriv_connected: derivConnected, last_scan_at: nowIso(), last_error: reason, updated_at: nowIso()
     });
     return { symbol, state: "ERROR", error: reason.slice(0, 250) };
   }
 }
 
-async function processUser(user: any, activeSymbols: any[]) {
+async function processUser(user: any, activeSymbols: any[], deriv: DerivClient) {
   const legacy = (user.market_names || {}) as Record<string, string>;
   const requestedNames = Array.isArray(user.markets) && user.markets.length
     ? user.markets.slice(0, 10)
@@ -335,8 +582,11 @@ async function processUser(user: any, activeSymbols: any[]) {
   await supabase.from("mkhandi_watchlists").update({
     symbols: markets.map((item: any) => item.symbol), market_names: marketNames, markets: requestedNames, updated_at: nowIso()
   }).eq("user_id", user.user_id);
-  const results = [];
-  for (const market of markets) results.push(await processMarket(user, market));
+  const results = await mapWithConcurrency(markets, 3, async (market) => {
+    const result = await processMarket(user, market, deriv);
+    console.log("Market scan result:", JSON.stringify({ user_id: user.user_id, market: market.name, ...result }));
+    return result;
+  });
   for (const name of requestedNames) {
     if (!markets.some((item: any) => item.name === name)) {
       const symbol = KNOWN_SYMBOLS[name] || "UNRESOLVED:" + normalizeName(name).replace(/ /g, "_");
@@ -347,6 +597,20 @@ async function processUser(user: any, activeSymbols: any[]) {
       results.push({ market: name, state: "UNRESOLVED" });
     }
   }
+  return results;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index]);
+    }
+  });
+  await Promise.all(runners);
   return results;
 }
 
@@ -371,19 +635,24 @@ async function runBackgroundScanner() {
       return;
     }
 
-    const activeSymbols = await derivActiveSymbols();
-    console.log("Deriv active-symbol catalogue loaded:", activeSymbols.length);
+    const deriv = new DerivClient();
+    try {
+      const activeSymbols = await deriv.activeSymbols();
+      console.log("Deriv active-symbol catalogue loaded:", activeSymbols.length);
 
-    const results = [];
-    for (const user of users) {
-      const markets = await processUser(user, activeSymbols);
-      results.push({ user_id: user.user_id, markets });
+      const results = [];
+      for (const user of users) {
+        const markets = await processUser(user, activeSymbols, deriv);
+        results.push({ user_id: user.user_id, markets });
+      }
+      console.log("Background scan completed:", JSON.stringify({
+        users: users.length,
+        markets_processed: results.reduce((total, item) => total + item.markets.length, 0),
+        results
+      }));
+    } finally {
+      deriv.close();
     }
-    console.log("Background scan completed:", JSON.stringify({
-      users: users.length,
-      markets_processed: results.reduce((total, item) => total + item.markets.length, 0),
-      results
-    }));
   } catch (error) {
     console.error("Background scanner run failed:", String(error));
   } finally {
