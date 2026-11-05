@@ -283,6 +283,10 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     const direction = (t15.action === "BUY" || t15.action === "SELL") && t1.bias === (t15.action === "BUY" ? "BULLISH" : "BEARISH") ? t15.action : "WAIT";
     const intervalMs = (Number(user.scan_interval_minutes) === 60 ? 60 : 30) * 60 * 1000;
     const lastAiAt = candidate.last_ai_at ? new Date(candidate.last_ai_at).getTime() : 0;
+    const nextAiAt = candidate.next_ai_at ? new Date(candidate.next_ai_at).getTime() : 0;
+    const aiResult = candidate.ai_result || {};
+    const hasAiVerdict = typeof aiResult.authenticated === "boolean";
+    const hasAiError = typeof aiResult.error === "string";
     const previousSnapshot = candidate.technical_snapshot || {};
     const previousM15 = previousSnapshot.m15 || {};
     const directionChanged = direction !== "WAIT" && direction !== candidate.direction;
@@ -291,7 +295,10 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       (Number(t15.score) >= Number(previousM15.score || 0) + 8) ||
       previousM15.trigger !== t15.trigger
     );
-    const dueByCadence = !lastAiAt || Date.now() - lastAiAt >= intervalMs;
+    // A candidate left AI_QUALIFYING without a verdict must be retried immediately.
+    // Transient AI errors retry after five minutes; genuine verdicts follow the configured cadence.
+    const dueByCadence = (!hasAiVerdict && !hasAiError) ||
+      (hasAiError ? (!nextAiAt || Date.now() >= nextAiAt) : (!nextAiAt ? (!lastAiAt || Date.now() - lastAiAt >= intervalMs) : Date.now() >= nextAiAt));
     const canRunAi = direction === "WAIT" ? dueByCadence : (directionChanged || triggerImproved || dueByCadence);
 
     if (!canRunAi) {
@@ -328,10 +335,13 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       verdict = await authenticateWithAI(marketName, direction, snapshot);
     } catch (error) {
       const reason = String(error).slice(0, 500);
-      await supabase.from("mkhandi_signal_candidates").update({
-        status: "AI_REJECTED", ai_result: { error: reason }, wait_reason: "Deep AI Scan could not finish. The same setup remains queued for its next automatic review.",
+      const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const { error: retryUpdateError } = await supabase.from("mkhandi_signal_candidates").update({
+        status: "AI_REJECTED", ai_result: { error: reason }, next_ai_at: retryAt,
+        wait_reason: "Deep AI Scan could not finish. The same setup is queued for automatic retry in five minutes.",
         updated_at: nowIso()
       }).eq("id", candidate.id);
+      if (retryUpdateError) throw retryUpdateError;
       await supabase.from("mkhandi_scanner_health").upsert({
         symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
         last_scan_at: timestamp, ai_status: "AI RETRY SCHEDULED", last_error: reason, updated_at: nowIso()
