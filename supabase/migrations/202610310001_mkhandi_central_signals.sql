@@ -116,7 +116,7 @@ create table if not exists public.mkhandi_worker_lease (
 alter table public.mkhandi_worker_lease enable row level security;
 create or replace function public.mkhandi_acquire_worker_lease()
 returns boolean language plpgsql security definer set search_path=public
-as $
+as $$
 declare acquired boolean := false;
 begin
   insert into public.mkhandi_worker_lease(id,locked_until)
@@ -126,10 +126,10 @@ begin
   returning true into acquired;
   return coalesce(acquired,false);
 end;
-$;
+$$;
 create or replace function public.mkhandi_release_worker_lease()
 returns void language sql security definer set search_path=public
-as $ update public.mkhandi_worker_lease set locked_until=now() where id=1; $;
+as $$ update public.mkhandi_worker_lease set locked_until=now() where id=1; $$;
 revoke all on function public.mkhandi_acquire_worker_lease() from public,anon,authenticated;
 revoke all on function public.mkhandi_release_worker_lease() from public,anon,authenticated;
 grant execute on function public.mkhandi_acquire_worker_lease() to service_role;

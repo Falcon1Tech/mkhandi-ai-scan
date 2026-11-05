@@ -350,27 +350,61 @@ async function processUser(user: any, activeSymbols: any[]) {
   return results;
 }
 
+async function runBackgroundScanner() {
+  const { data: acquired, error: lockError } = await supabase.rpc("mkhandi_acquire_worker_lease");
+  if (lockError) {
+    console.error("Scanner lease unavailable:", lockError.message);
+    return;
+  }
+  if (!acquired) {
+    console.log("Scanner invocation skipped: another worker owns the lease.");
+    return;
+  }
+
+  try {
+    const { data: users, error } = await supabase.from("mkhandi_watchlists")
+      .select("user_id,symbols,markets,market_names,enabled,scan_interval_minutes")
+      .eq("enabled", true);
+    if (error) throw error;
+    if (!users?.length) {
+      console.log("Background scan completed: no enabled watchlists.");
+      return;
+    }
+
+    const activeSymbols = await derivActiveSymbols();
+    console.log("Deriv active-symbol catalogue loaded:", activeSymbols.length);
+
+    const results = [];
+    for (const user of users) {
+      const markets = await processUser(user, activeSymbols);
+      results.push({ user_id: user.user_id, markets });
+    }
+    console.log("Background scan completed:", JSON.stringify({
+      users: users.length,
+      markets_processed: results.reduce((total, item) => total + item.markets.length, 0),
+      results
+    }));
+  } catch (error) {
+    console.error("Background scanner run failed:", String(error));
+  } finally {
+    const { error } = await supabase.rpc("mkhandi_release_worker_lease");
+    if (error) console.error("Could not release scanner lease:", error.message);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
-  if (req.headers.get("x-mkhandi-worker-secret") !== env("MKHANDI_WORKER_SECRET")) return json({ error: "Unauthorized worker" }, 401);
+  if (req.headers.get("x-mkhandi-worker-secret") !== env("MKHANDI_WORKER_SECRET")) {
+    return json({ error: "Unauthorized worker" }, 401);
+  }
   for (const key of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "OPENAI_API_KEY", "MKHANDI_WORKER_SECRET"]) {
     if (!env(key)) return json({ error: "Missing server secret: " + key }, 503);
   }
-  const { data: acquired, error: lockError } = await supabase.rpc("mkhandi_acquire_worker_lease");
-  if (lockError) return json({ error: "Scanner lease unavailable: " + lockError.message }, 503);
-  if (!acquired) return json({ ok: true, skipped: "Another scanner invocation is still running", scanned_at: nowIso() }, 202);
-  try {
-    const { data: users, error } = await supabase.from("mkhandi_watchlists")
-      .select("user_id,symbols,markets,market_names,enabled,scan_interval_minutes").eq("enabled", true);
-    if (error) return json({ error: error.message }, 500);
-    if (!users?.length) return json({ ok: true, scanned_at: nowIso(), users: 0, results: [] });
-    let active: any[];
-    try { active = await derivActiveSymbols(); }
-    catch (error) { return json({ error: "Could not resolve Deriv markets: " + String(error) }, 502); }
-    const results = [];
-    for (const user of users) results.push({ user_id: user.user_id, markets: await processUser(user, active) });
-    return json({ ok: true, scanned_at: nowIso(), results });
-  } finally {
-    await supabase.rpc("mkhandi_release_worker_lease");
-  }
+
+  // Acknowledge Supabase Cron immediately. The scan itself continues as a
+  // managed background task, avoiding pg_net's short HTTP response timeout.
+  EdgeRuntime.waitUntil(runBackgroundScanner().catch((error) => {
+    console.error("Unhandled background scanner failure:", String(error));
+  }));
+  return json({ ok: true, accepted: true, source: "supabase-cron", accepted_at: nowIso() }, 202);
 });
