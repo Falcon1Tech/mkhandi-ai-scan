@@ -332,21 +332,61 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       .eq("user_id", userId).eq("symbol", symbol).eq("status", "ACTIVE").like("source_id", "BG:%").maybeSingle();
     if (activeError) throw activeError;
     if (active) {
-      const hitTp2 = active.direction === "BUY" ? Number(price) >= Number(active.tp2) : Number(price) <= Number(active.tp2);
-      const invalid = active.direction === "BUY" ? Number(price) <= Number(active.invalidation) : Number(price) >= Number(active.invalidation);
-      if (hitTp2 || invalid) {
-        const event = hitTp2 ? "TP2_REACHED" : "INVALIDATED";
+      const candle = m15[m15.length - 1];
+      const candleHigh = Number(candle?.high ?? price);
+      const candleLow = Number(candle?.low ?? price);
+      // OHLC touch checks are more reliable than close-only checks. If both
+      // TP2 and invalidation occur inside one candle, record invalidation
+      // conservatively because candle ordering cannot be reconstructed.
+      const hitTp2 = active.direction === "BUY" ? candleHigh >= Number(active.tp2) : candleLow <= Number(active.tp2);
+      const invalid = active.direction === "BUY" ? candleLow <= Number(active.invalidation) : candleHigh >= Number(active.invalidation);
+      if (invalid || hitTp2) {
+        const event = invalid ? "INVALIDATED" : "TP2_REACHED";
         const { error } = await supabase.from("mkhandi_signals").update({
           status: event, completed_at: timestamp,
-          completion_reason: hitTp2 ? "TP2 reached by server-side price monitor" : "Invalidation breached by server-side price monitor",
+          completion_reason: invalid
+            ? "Invalidation level touched by server-side M15 candle monitor"
+            : "TP2 level touched by server-side M15 candle monitor",
           updated_at: timestamp
         }).eq("id", active.id);
         if (error) throw error;
-        await supabase.from("mkhandi_signal_events").insert({ signal_id: active.id, user_id: userId, event_type: event, price, details: { source: "supabase-background-worker" } });
+        const { error: eventError } = await supabase.from("mkhandi_signal_events").upsert({
+          signal_id: active.id, user_id: userId, event_type: event, price,
+          details: { source: "supabase-background-worker", candle_epoch: candle?.epoch, candle_high: candleHigh, candle_low: candleLow }
+        }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+        if (eventError) throw eventError;
         await notify(userId, active, event);
-        await supabase.from("mkhandi_signal_candidates").update({ status: "CLOSED", wait_reason: "Previous authenticated signal completed: " + event, updated_at: timestamp }).eq("published_signal_id", active.id);
+        const { error: candidateCloseError } = await supabase.from("mkhandi_signal_candidates").update({
+          status: "CLOSED", wait_reason: "Previous authenticated signal completed: " + event, updated_at: timestamp
+        }).eq("published_signal_id", active.id);
+        if (candidateCloseError) throw candidateCloseError;
+      } else {
+        const entryTouched = candleLow <= Number(active.entry) && candleHigh >= Number(active.entry);
+        const tp1Touched = active.tp1 != null && candleLow <= Number(active.tp1) && candleHigh >= Number(active.tp1);
+        if (entryTouched && !active.entry_reached_at) {
+          const { error: entryUpdateError } = await supabase.from("mkhandi_signals").update({
+            entry_reached_at: timestamp, updated_at: timestamp
+          }).eq("id", active.id);
+          if (entryUpdateError) throw entryUpdateError;
+          const { error: entryEventError } = await supabase.from("mkhandi_signal_events").upsert({
+            signal_id: active.id, user_id: userId, event_type: "ENTRY_REACHED", price,
+            details: { source: "supabase-background-worker", candle_epoch: candle?.epoch, entry: active.entry }
+          }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+          if (entryEventError) throw entryEventError;
+        }
+        if (tp1Touched && !active.tp1_reached_at) {
+          const { error: tp1UpdateError } = await supabase.from("mkhandi_signals").update({
+            tp1_reached_at: timestamp, updated_at: timestamp
+          }).eq("id", active.id);
+          if (tp1UpdateError) throw tp1UpdateError;
+          const { error: tp1EventError } = await supabase.from("mkhandi_signal_events").upsert({
+            signal_id: active.id, user_id: userId, event_type: "TP1_REACHED", price,
+            details: { source: "supabase-background-worker", candle_epoch: candle?.epoch, tp1: active.tp1 }
+          }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+          if (tp1EventError) throw tp1EventError;
+        }
       }
-      return { symbol, state: hitTp2 ? "TP2_REACHED" : invalid ? "INVALIDATED" : "ACTIVE_MONITORED", price };
+      return { symbol, state: invalid ? "INVALIDATED" : hitTp2 ? "TP2_REACHED" : "ACTIVE_MONITORED", price };
     }
 
     const candidate = await ensureCandidate(userId, symbol, marketName);
@@ -507,10 +547,11 @@ async function processMarket(user: any, market: { name: string; symbol: string }
         throw error;
       }
     }
-    await supabase.from("mkhandi_signal_events").insert({
+    const { error: authenticatedEventError } = await supabase.from("mkhandi_signal_events").upsert({
       signal_id: signal.id, user_id: userId, event_type: "AUTHENTICATED", price,
       details: { confidence, risk_reward: Number(rr.toFixed(2)), source: "supabase-background-deep-ai" }
-    });
+    }, { onConflict: "signal_id,event_type", ignoreDuplicates: true });
+    if (authenticatedEventError) throw authenticatedEventError;
     const { error: candidatePublishError } = await supabase.from("mkhandi_signal_candidates").update({
       status: "AUTHENTICATED", published_signal_id: signal.id, ai_result: verdict,
       wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
