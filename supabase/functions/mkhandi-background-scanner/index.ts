@@ -335,6 +335,9 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       tp2: Number(verdict.tp2), confidence, rationale: String(verdict.rationale || "").slice(0, 1200),
       technical_snapshot: snapshot
     };
+    if (verdict.authenticated !== true) {
+      throw new Error("Deep AI verdict did not return authenticated=true; publication blocked");
+    }
     const { data: signal, error: insertError } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
     if (insertError) {
       if (insertError.code === "23505") {
@@ -342,10 +345,11 @@ async function processMarket(user: any, market: { name: string; symbol: string }
           .eq("user_id", userId).eq("source_id", "BG:" + candidate.id).maybeSingle();
         if (existingError) throw existingError;
         if (existingSignal) {
-          await supabase.from("mkhandi_signal_candidates").update({
+          const { error: candidateUpdateError } = await supabase.from("mkhandi_signal_candidates").update({
             status: "AUTHENTICATED", published_signal_id: existingSignal.id, ai_result: verdict,
             wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
           }).eq("id", candidate.id);
+          if (candidateUpdateError) throw candidateUpdateError;
           return { symbol, state: "ALREADY_PUBLISHED", signal_id: existingSignal.id, candidate_id: candidate.id };
         }
       }
@@ -355,10 +359,11 @@ async function processMarket(user: any, market: { name: string; symbol: string }
       signal_id: signal.id, user_id: userId, event_type: "AUTHENTICATED", price,
       details: { confidence, risk_reward: Number(rr.toFixed(2)), source: "supabase-background-deep-ai" }
     });
-    await supabase.from("mkhandi_signal_candidates").update({
+    const { error: candidatePublishError } = await supabase.from("mkhandi_signal_candidates").update({
       status: "AUTHENTICATED", published_signal_id: signal.id, ai_result: verdict,
       wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
     }).eq("id", candidate.id);
+    if (candidatePublishError) throw candidatePublishError;
     await supabase.from("mkhandi_scanner_health").upsert({
       symbol, market_name: marketName, deriv_connected: true, last_quote: price, last_quote_at: timestamp,
       last_scan_at: timestamp, ai_status: "AUTHENTICATED · PUBLISHED", last_error: null, updated_at: nowIso()
