@@ -288,7 +288,18 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     };
     const { data: signal, error: insertError } = await supabase.from("mkhandi_signals").insert(row).select("*").single();
     if (insertError) {
-      if (insertError.code === "23505") return { symbol, state: "ALREADY_PUBLISHED", candidate_id: candidate.id };
+      if (insertError.code === "23505") {
+        const { data: existingSignal, error: existingError } = await supabase.from("mkhandi_signals").select("*")
+          .eq("user_id", userId).eq("source_id", "BG:" + candidate.id).maybeSingle();
+        if (existingError) throw existingError;
+        if (existingSignal) {
+          await supabase.from("mkhandi_signal_candidates").update({
+            status: "AUTHENTICATED", published_signal_id: existingSignal.id, ai_result: verdict,
+            wait_reason: "Authenticated by automatic background Deep AI Scan.", updated_at: nowIso()
+          }).eq("id", candidate.id);
+          return { symbol, state: "ALREADY_PUBLISHED", signal_id: existingSignal.id, candidate_id: candidate.id };
+        }
+      }
       throw insertError;
     }
     await supabase.from("mkhandi_signal_events").insert({
