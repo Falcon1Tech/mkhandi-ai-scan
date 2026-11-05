@@ -13,6 +13,23 @@
 - Connection Health view reads server-side Deriv quote, scan and AI health records.
 - Existing browser signal history is imported into the central account ledger on sign-in; cloud signal rows are refreshed and subscribed to realtime changes.
 
+## Default watchlist
+
+The platform default is exactly ten markets, in this order:
+
+1. Boom 1000 Index
+2. Boom 500 Index
+3. Crash 1000 Index
+4. Crash 900 Index
+5. Crash 600 Index
+6. Crash 300 Index
+7. Boom 300 Index
+8. Boom 600 Index
+9. Boom 900 Index
+10. Step Index
+
+The first app load after this release migrates the browser's saved default list to this set. Later deliberate watchlist edits remain saved.
+
 ## Required configuration before activation
 
 The source code is prepared, but the worker cannot run until the existing Supabase project and OneSignal application are configured. Never commit service-role or OneSignal REST API secrets.
