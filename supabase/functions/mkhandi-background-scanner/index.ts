@@ -371,6 +371,16 @@ async function processMarket(user: any, market: { name: string; symbol: string }
     const canRunAi = direction === "WAIT" ? dueByCadence : (directionChanged || triggerImproved || dueByCadence);
 
     if (!canRunAi) {
+      // Backfill a public WAIT signal for an already Deep-AI-reviewed candidate.
+      // This keeps the same signal row ready for in-place promotion later.
+      if (!candidate.published_signal_id && aiResult.authenticated === false) {
+        const publishedReason = String(candidate.wait_reason || aiResult.rationale || "Deep AI reviewed this candidate and left it in WAIT.");
+        await persistWaitingSignal({
+          userId, candidate, marketName, symbol, snapshot, verdict: aiResult, reason: publishedReason,
+          candidateStatus: candidate.status === "AI_REJECTED" ? "AI_REJECTED" : "WAITING",
+          candidateDirection: candidate.direction, timestamp
+        });
+      }
       const waitReason = direction === "WAIT"
         ? (t15.action !== "WAIT" ? "Waiting for H1 and M15 direction to agree." : t15.reason)
         : "Setup remains under observation. The same candidate will be rechecked automatically.";
