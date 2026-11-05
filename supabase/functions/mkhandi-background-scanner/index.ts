@@ -254,7 +254,9 @@ async function persistWaitingSignal(args: {
   candidateDirection: "WAIT" | "BUY" | "SELL";
   timestamp: string;
 }) {
-  const confidenceValue = Number(args.verdict.confidence);
+  const rawConfidence = Number(args.verdict.confidence);
+  const confidenceValue = Number.isFinite(rawConfidence) && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence;
+  const reviewedVerdict = { ...args.verdict, confidence: Number.isFinite(confidenceValue) ? confidenceValue : null };
   const row = {
     user_id: args.userId,
     source_id: "BG:" + args.candidate.id,
@@ -300,7 +302,7 @@ async function persistWaitingSignal(args: {
   const { error: candidateError } = await supabase.from("mkhandi_signal_candidates").update({
     status: args.candidateStatus,
     direction: args.candidateDirection,
-    ai_result: args.verdict,
+    ai_result: reviewedVerdict,
     published_signal_id: signal.id,
     wait_reason: args.reason.slice(0, 1200),
     technical_snapshot: args.snapshot,
