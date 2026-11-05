@@ -31,11 +31,27 @@ class DerivClient {
   private opened: Promise<void>;
 
   constructor() {
-    this.ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=1089");
+    const appId = env("DERIV_APP_ID") || "1089";
+    if (!env("DERIV_APP_ID")) console.warn("DERIV_APP_ID is not configured; using Deriv's test-only app_id 1089.");
+    this.ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=" + encodeURIComponent(appId));
     this.opened = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Deriv WebSocket connection timed out")), 10000);
-      this.ws.onopen = () => { clearTimeout(timer); resolve(); };
-      this.ws.onerror = () => { clearTimeout(timer); reject(new Error("Deriv WebSocket connection failed")); };
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Deriv WebSocket connection timed out; check outbound WebSocket access and DERIV_APP_ID"));
+        try { this.ws.close(); } catch { /* ignore */ }
+      }, 10000);
+      this.ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      this.ws.onerror = (event) => {
+        const detail = (event as ErrorEvent)?.message || "no browser/runtime detail";
+        console.error("Deriv WebSocket transport error:", detail);
+      };
       this.ws.onmessage = (event) => {
         let message: any;
         try { message = JSON.parse(event.data); } catch { return; }
@@ -47,7 +63,14 @@ class DerivClient {
         if (message.error) pending.reject(new Error(message.error.message || "Deriv API error"));
         else pending.resolve(message);
       };
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
+        const closeReason = "Deriv WebSocket closed (code=" + event.code + ", reason=" + (event.reason || "none") + ", clean=" + event.wasClean + ")";
+        console.error(closeReason);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error(closeReason));
+        }
         for (const [id, item] of this.pending) {
           clearTimeout(item.timer);
           item.reject(new Error("Deriv WebSocket closed before request completed"));
