@@ -129,7 +129,7 @@ end;
 $$;
 create or replace function public.mkhandi_release_worker_lease()
 returns void language sql security definer set search_path=public
-as $ update public.mkhandi_worker_lease set locked_until=now() where id=1; $;
+as $$ update public.mkhandi_worker_lease set locked_until=now() where id=1; $$;
 revoke all on function public.mkhandi_acquire_worker_lease() from public,anon,authenticated;
 revoke all on function public.mkhandi_release_worker_lease() from public,anon,authenticated;
 grant execute on function public.mkhandi_acquire_worker_lease() to service_role;
