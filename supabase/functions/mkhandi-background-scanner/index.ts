@@ -403,6 +403,8 @@ Deno.serve(async (req) => {
 
   // Acknowledge Supabase Cron immediately. The scan itself continues as a
   // managed background task, avoiding pg_net's short HTTP response timeout.
-  EdgeRuntime.waitUntil(runBackgroundScanner());
+  EdgeRuntime.waitUntil(runBackgroundScanner().catch((error) => {
+    console.error("Unhandled background scanner failure:", String(error));
+  }));
   return json({ ok: true, accepted: true, source: "supabase-cron", accepted_at: nowIso() }, 202);
 });
