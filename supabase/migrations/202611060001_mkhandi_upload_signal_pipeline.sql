@@ -32,7 +32,7 @@ begin
     raise exception 'Entry, invalidation, TP1 and TP2 must all be valid positive prices';
   end if;
   if p_confidence is null or p_confidence < 50 or p_confidence > 100 then
-    raise exception 'Upload confidence must be at least 50%';
+    raise exception 'Upload confidence must be at least 50 percent';
   end if;
   if p_direction = 'BUY' and not (p_invalidation < p_entry and p_tp1 > p_entry and p_tp2 >= p_tp1) then
     raise exception 'BUY price geometry is invalid';
