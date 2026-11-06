@@ -197,7 +197,7 @@ async function authenticateWithAI(symbol: string, direction: string, snapshot: a
       signal: controller.signal,
       body: JSON.stringify({
         model: env("OPENAI_MODEL") || "gpt-4.1",
-        input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. H1 is higher-timeframe context only; do not require an H1 breakout or crossover. M15 is the execution trigger timeframe. The proposed direction is " + direction + ". Use H1 strictly as higher-timeframe directional context (bias/structure), NOT as a second entry-trigger timeframe. H1 does not need its own EMA crossover or breakout; an H1 action of WAIT must not veto an M15 entry when H1 bias and structure are aligned and not strongly opposing. M15 is the execution timeframe and must provide the actual confirmed trigger. Authenticate only when H1 context supports the proposed direction, M15 has a confirmed trigger, invalidation is structurally sensible, projected TP2 reward/risk is at least 1.5, confidence is at least 65, and entry is not materially extended from the M15 EMA/ATR or into obvious exhaustion. If any condition is missing, return authenticated=false and give a specific checklist: H1 context, M15 trigger, entry freshness/extension, structural invalidation, TP2 reward/risk, confidence. Do not demand an H1 breakout in addition to the M15 trigger. Do not relax any price geometry, risk/reward, confidence, or exhaustion safeguards. Do not invent a trade. Confidence must be a percentage from 0 to 100. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
+        input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. H1 is higher-timeframe context only; do not require an H1 breakout or crossover. M15 is the execution trigger timeframe. The proposed direction is " + direction + ". Use H1 strictly as higher-timeframe directional context (bias/structure), NOT as a second entry-trigger timeframe. H1 does not need its own EMA crossover or breakout; an H1 action of WAIT must not veto an M15 entry when H1 bias and structure are aligned and not strongly opposing. M15 is the execution timeframe and must provide the actual confirmed trigger. Authenticate only when H1 context supports the proposed direction, M15 has a confirmed trigger, invalidation is structurally sensible, projected TP2 reward/risk is at least 1.2, confidence is at least 50, and entry is not materially extended from the M15 EMA/ATR or into obvious exhaustion. If any condition is missing, return authenticated=false and give a specific checklist: H1 context, M15 trigger, entry freshness/extension, structural invalidation, TP2 reward/risk, confidence. Do not demand an H1 breakout in addition to the M15 trigger. Do not relax any price geometry, risk/reward, confidence, or exhaustion safeguards. Do not invent a trade. Confidence must be a percentage from 0 to 100. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
         text: { format: { type: "json_object" } },
         max_output_tokens: 450
       })
@@ -511,14 +511,14 @@ async function processMarket(user: any, market: { name: string; symbol: string }
         : Number(verdict.invalidation) > Number(verdict.entry) && tp1 < Number(verdict.entry) && Number(verdict.tp2) <= tp1);
     const rr = geometry ? Math.abs(Number(verdict.tp2) - Number(verdict.entry)) / Math.abs(Number(verdict.entry) - Number(verdict.invalidation)) : 0;
     const confidence = Number(verdict.confidence);
-    if (verdict.authenticated !== true || !geometry || rr < 1.5 || !Number.isFinite(confidence) || confidence < 65) {
+    if (verdict.authenticated !== true || !geometry || rr < 1.2 || !Number.isFinite(confidence) || confidence < 50) {
       const baseReason = String(verdict.rationale || "Deep AI Scan has not confirmed a valid entry yet. Waiting for the setup to improve.");
       const systemReason = !geometry
         ? "System risk gate: entry, invalidation, TP1 and TP2 geometry is incomplete or invalid. "
-        : rr < 1.5
+        : rr < 1.2
           ? "System risk gate: TP2 reward/risk is below 1.5. "
-          : confidence < 65
-            ? "System risk gate: AI confidence is below 65%. "
+          : confidence < 50
+            ? "System risk gate: AI confidence is below 50%. "
             : "";
       const reason = systemReason + baseReason;
       const rejectedVerdict = { ...verdict, authenticated: false, rationale: reason };
