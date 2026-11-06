@@ -166,6 +166,27 @@ function technical(candles: Candle[]) {
   };
 }
 
+function explainWaitState(m15: any, h1: any, direction: string, nextAiAt?: string | null) {
+  const reasons: string[] = [];
+  const wantedBias = direction === "BUY" ? "BULLISH" : direction === "SELL" ? "BEARISH" : null;
+  if (!wantedBias) {
+    if (m15?.action === "WAIT") reasons.push("M15 entry trigger is not confirmed: " + String(m15?.reason || "price has not closed beyond the prior candle structure") + ".");
+    if (h1?.bias === "NEUTRAL") reasons.push("H1 context is neutral; wait for directional structure.");
+    else if (h1?.bias && m15?.bias && h1.bias !== m15.bias) reasons.push("H1/M15 directional bias conflict: H1 " + h1.bias + ", M15 " + m15.bias + ".");
+    if (m15?.action !== "WAIT" && h1?.bias && ((m15.action === "BUY" && h1.bias !== "BULLISH") || (m15.action === "SELL" && h1.bias !== "BEARISH"))) reasons.push("M15 has a " + m15.action + " trigger, but H1 context is " + h1.bias + "; directional alignment is not established.");
+  } else {
+    if (m15?.action !== direction) reasons.push("M15 trigger does not currently confirm " + direction + ".");
+    if (h1?.bias !== wantedBias) reasons.push("H1 context is " + String(h1?.bias || "unavailable") + ", not " + wantedBias + ".");
+    if (m15?.action === direction && h1?.bias === wantedBias) reasons.push("Technical direction aligns; waiting for the next scheduled independent Deep AI risk review.");
+  }
+  if (m15?.price != null && m15?.ema9 != null && m15?.atr > 0) {
+    const extension = Math.abs(Number(m15.price) - Number(m15.ema9)) / Number(m15.atr);
+    if (extension > 2.5) reasons.push("Entry freshness warning: price is " + extension.toFixed(1) + " M15 ATR from EMA9; a pullback or fresh continuation trigger is preferred.");
+  }
+  if (nextAiAt) reasons.push("Next scheduled AI review: " + new Date(nextAiAt).toISOString() + ".");
+  return reasons.length ? reasons.join(" ") : "Waiting for a fresh M15 trigger with supportive H1 context.";
+}
+
 async function authenticateWithAI(symbol: string, direction: string, snapshot: any) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
@@ -176,7 +197,7 @@ async function authenticateWithAI(symbol: string, direction: string, snapshot: a
       signal: controller.signal,
       body: JSON.stringify({
         model: env("OPENAI_MODEL") || "gpt-4.1",
-        input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. The proposed direction is " + direction + ". Authenticate only when H1 and M15 direction agree, the M15 trigger is valid, invalidation is structurally sensible, and projected TP2 reward/risk is at least 1.5. If any condition is missing, return authenticated=false and explain what must happen before the same waiting setup becomes valid. Do not invent a trade. Confidence must be a percentage from 0 to 100. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
+        input: "You are MKHANDI's cautious independent Deep AI Scan engine. Review this live Deriv synthetic-index OHLC and multi-timeframe snapshot. H1 is higher-timeframe context only; do not require an H1 breakout or crossover. M15 is the execution trigger timeframe. The proposed direction is " + direction + ". Use H1 strictly as higher-timeframe directional context (bias/structure), NOT as a second entry-trigger timeframe. H1 does not need its own EMA crossover or breakout; an H1 action of WAIT must not veto an M15 entry when H1 bias and structure are aligned and not strongly opposing. M15 is the execution timeframe and must provide the actual confirmed trigger. Authenticate only when H1 context supports the proposed direction, M15 has a confirmed trigger, invalidation is structurally sensible, projected TP2 reward/risk is at least 1.5, confidence is at least 65, and entry is not materially extended from the M15 EMA/ATR or into obvious exhaustion. If any condition is missing, return authenticated=false and give a specific checklist: H1 context, M15 trigger, entry freshness/extension, structural invalidation, TP2 reward/risk, confidence. Do not demand an H1 breakout in addition to the M15 trigger. Do not relax any price geometry, risk/reward, confidence, or exhaustion safeguards. Do not invent a trade. Confidence must be a percentage from 0 to 100. Return JSON only with {authenticated:boolean,confidence:number,entry:number,invalidation:number,tp1:number,tp2:number,rationale:string}. Market: " + symbol + ". Snapshot: " + JSON.stringify(snapshot),
         text: { format: { type: "json_object" } },
         max_output_tokens: 450
       })
@@ -423,9 +444,7 @@ async function processMarket(user: any, market: { name: string; symbol: string }
           candidateDirection: candidate.direction, timestamp
         });
       }
-      const waitReason = direction === "WAIT"
-        ? (t15.action !== "WAIT" ? "Waiting for H1 and M15 direction to agree." : t15.reason)
-        : "Setup remains under observation. The same candidate will be rechecked automatically.";
+      const waitReason = explainWaitState(t15, t1, direction, candidate.next_ai_at);
       const { error } = await supabase.from("mkhandi_signal_candidates").update({
         market_name: marketName, direction,
         status: candidate.status === "AI_REJECTED" ? "AI_REJECTED" : "WAITING",
