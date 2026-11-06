@@ -40,7 +40,13 @@ create policy "Users insert own trade journal" on public.mkhandi_trade_journal
 drop policy if exists "Users update own trade journal" on public.mkhandi_trade_journal;
 create policy "Users update own trade journal" on public.mkhandi_trade_journal
   for update to authenticated using ((select auth.uid())=user_id)
-  with check ((select auth.uid())=user_id);
+  with check (
+    (select auth.uid())=user_id and exists (
+      select 1 from public.mkhandi_signals sig
+      where sig.id=signal_id and sig.user_id=(select auth.uid())
+        and sig.direction in ('BUY','SELL') and sig.authenticated_at is not null
+    )
+  );
 grant select,insert,update on public.mkhandi_trade_journal to authenticated;
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
