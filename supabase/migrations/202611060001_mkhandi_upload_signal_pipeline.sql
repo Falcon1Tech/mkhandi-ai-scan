@@ -31,8 +31,8 @@ begin
      or p_entry <= 0 or p_invalidation <= 0 or p_tp1 <= 0 or p_tp2 <= 0 then
     raise exception 'Entry, invalidation, TP1 and TP2 must all be valid positive prices';
   end if;
-  if p_confidence is null or p_confidence < 65 or p_confidence > 100 then
-    raise exception 'Upload confidence must be at least 65%';
+  if p_confidence is null or p_confidence < 50 or p_confidence > 100 then
+    raise exception 'Upload confidence must be at least 50%';
   end if;
   if p_direction = 'BUY' and not (p_invalidation < p_entry and p_tp1 > p_entry and p_tp2 >= p_tp1) then
     raise exception 'BUY price geometry is invalid';
@@ -43,7 +43,7 @@ begin
   perform pg_advisory_xact_lock(hashtext(v_user::text),hashtext(p_symbol));
 
   v_rr := abs(p_tp2-p_entry)/nullif(abs(p_entry-p_invalidation),0);
-  if v_rr is null or v_rr < 1.5 then raise exception 'Upload TP2 reward/risk must be at least 1.5R'; end if;
+  if v_rr is null or v_rr < 1.2 then raise exception 'Upload TP2 reward/risk must be at least 1.2R'; end if;
 
   -- Never create a second active signal for the same asset. Reuse an existing
   -- same-direction signal; require the existing lifecycle to close before reversal.
