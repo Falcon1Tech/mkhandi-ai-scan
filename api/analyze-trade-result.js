@@ -24,7 +24,7 @@ export default async function handler(req,res){
     const token=String(req.headers.authorization||"").replace(/^Bearer\s+/i,"");
     if(!token)return send(res,401,{error:"Sign in is required to review trade evidence."});
     const base=process.env.SUPABASE_URL||"https://xrthszxomclwrleezkem.supabase.co";
-    const anon=process.env.SUPABASE_ANON_KEY;
+    const anon=process.env.SUPABASE_ANON_KEY||"sb_publishable_UeJC9UkWWeaFrbOPbyWDNA_2dJZzkD4";
     if(!anon)return send(res,503,{error:"Supabase authentication is not configured on this deployment."});
     const auth=await fetch(base+"/auth/v1/user",{headers:{apikey:anon,Authorization:"Bearer "+token}});
     if(!auth.ok)return send(res,401,{error:"Your session could not be verified. Please sign in again."});
