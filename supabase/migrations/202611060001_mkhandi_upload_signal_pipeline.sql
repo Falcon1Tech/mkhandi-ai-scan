@@ -40,6 +40,8 @@ begin
   if p_direction = 'SELL' and not (p_invalidation > p_entry and p_tp1 < p_entry and p_tp2 <= p_tp1) then
     raise exception 'SELL price geometry is invalid';
   end if;
+  perform pg_advisory_xact_lock(hashtext(v_user::text),hashtext(p_symbol));
+
   v_rr := abs(p_tp2-p_entry)/nullif(abs(p_entry-p_invalidation),0);
   if v_rr is null or v_rr < 1.5 then raise exception 'Upload TP2 reward/risk must be at least 1.5R'; end if;
 
