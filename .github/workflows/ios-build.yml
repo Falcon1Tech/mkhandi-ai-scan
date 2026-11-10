@@ -4,8 +4,9 @@ on:
   push:
     paths:
       - "ios/**"
+      - "index.html"
       - ".github/workflows/ios-build.yml"
-    branches: [main]
+    branches: [main, feature/ios-native-build-preparation]
 permissions:
   contents: read
 jobs:
@@ -27,7 +28,10 @@ jobs:
       - name: Package simulator app
         run: |
           mkdir -p artifacts
-          ditto ios/build/Build/Products/Debug-iphonesimulator/MKHANDIAIScan.app artifacts/MKHANDIAIScan-Simulator.app
+          APP_PATH="$(find ios/build/Build/Products/Debug-iphonesimulator -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then echo "No simulator .app bundle found"; exit 1; fi
+          echo "Packaging simulator app: $APP_PATH"
+          ditto "$APP_PATH" artifacts/MKHANDIAIScan-Simulator.app
           cd artifacts
           zip -r MKHANDIAIScan-Simulator.zip MKHANDIAIScan-Simulator.app
       - name: Upload simulator artifact
