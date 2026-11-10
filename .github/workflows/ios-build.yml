@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "ios/**"
+      - "index.html"
       - ".github/workflows/ios-build.yml"
     branches: [main, feature/ios-native-build-preparation]
 permissions:
