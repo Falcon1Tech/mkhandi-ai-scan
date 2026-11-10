@@ -5,7 +5,7 @@ on:
     paths:
       - "ios/**"
       - ".github/workflows/ios-build.yml"
-    branches: [main]
+    branches: [main, feature/ios-native-build-preparation]
 permissions:
   contents: read
 jobs:
