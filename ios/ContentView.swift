@@ -1,11 +1,12 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 private enum T {
  static let bg=Color(red:0.025,green:0.04,blue:0.075), card=Color(red:0.055,green:0.085,blue:0.14), panel=Color(red:0.035,green:0.06,blue:0.105)
  static let red=Color(red:1,green:0.07,blue:0.25), cyan=Color(red:0.28,green:0.82,blue:1), green=Color(red:0.1,green:0.9,blue:0.65), amber=Color(red:1,green:0.72,blue:0.25), purple=Color(red:0.72,green:0.4,blue:1)
 }
 struct ScanResult: Decodable {
- let instrument:String?; let recommendation:String?; let overall_bias:String?; let confidence:Double?; let summary:String?; let market_structure:String?; let timeframe_analysis:String?; let entry:Double?; let stop_loss:Double?; let take_profit_1:Double?; let take_profit_2:Double?; let risk_reward:Double?; let invalidation:String?; let reasons:[String]?; let warnings:[String]?
+ let instrument:String?; let executionTimeframe:String?; let recommendation:String?; let overall_bias:String?; let confidence:Double?; let summary:String?; let market_structure:String?; let timeframe_analysis:String?; let entry:Double?; let stop_loss:Double?; let take_profit_1:Double?; let take_profit_2:Double?; let risk_reward:Double?; let invalidation:String?; let reasons:[String]?; let warnings:[String]?
 }
 struct ContentView: View {
  @State private var tab="AI Deep Scan"
@@ -23,7 +24,7 @@ struct ContentView: View {
  var body: some View {
   ZStack { T.bg.ignoresSafeArea(); VStack(spacing:0) { header; ScrollView { VStack(alignment:.leading,spacing:15) { if tab=="AI Deep Scan" { deepScan } else if tab=="Watchlist" { watchlist } else if tab=="Signals" { signals } else { dashboard } }.padding(15) }; tabs } }
   .preferredColorScheme(.dark)
-  .onChange(of:items) { _, new in Task { for (frame,item) in new { if let data=try? await item.loadTransferable(type:Data.self) { await MainActor.run { images[frame]=data } } } } }
+  .onChange(of:items) { new in Task { for (frame,item) in new { if let data=try? await item.loadTransferable(type:Data.self) { await MainActor.run { images[frame]=data } } } } }
   .alert("Scan error",isPresented:Binding(get:{error != nil},set:{if !$0 {error=nil}})) { Button("OK",role:.cancel){error=nil} } message:{Text(error ?? "")}
  }
  private var header:some View { HStack(spacing:11) { ZStack { Circle().stroke(T.red,lineWidth:3).frame(width:43,height:43); HStack(spacing:3){Capsule().fill(.white).frame(width:5,height:17);Capsule().fill(T.red).frame(width:5,height:27);Capsule().fill(.white).frame(width:5,height:21)} }; VStack(alignment:.leading,spacing:3){Text("MKHANDI AI SCAN").font(.system(size:18,weight:.black,design:.rounded));Text("NATIVE iOS • CHART ANALYSIS").font(.system(size:9,weight:.heavy)).tracking(1).foregroundStyle(T.red)};Spacer();Circle().fill(T.green).frame(width:8,height:8);Text("READY").font(.system(size:10,weight:.black)).foregroundStyle(T.green) }.padding(14).background(T.card).clipShape(RoundedRectangle(cornerRadius:18)).overlay(RoundedRectangle(cornerRadius:18).stroke(.white.opacity(0.12))).padding(.horizontal,12).padding(.top,7) }
@@ -63,8 +64,16 @@ struct ContentView: View {
    var request=URLRequest(url:URL(string:"https://mkhandi-ai-scan.vercel.app/api/scan")!);request.httpMethod="POST";let boundary="MKHANDI-\(UUID().uuidString)";request.setValue("multipart/form-data; boundary=\(boundary)",forHTTPHeaderField:"Content-Type");request.timeoutInterval=90
    var body=Data();func append(_ s:String){body.append(Data(s.utf8))}
    func field(_ name:String,_ value:String){append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n")}
-   field("instrument",instrument);field("executionTimeframe","M15")
-   for frame in frames {guard let data=images[frame] else{continue};append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(frame)\"; filename=\"\(frame.lowercased()).jpg\"\r\nContent-Type: image/jpeg\r\n\r\n");body.append(data);append("\r\n")}
+   field("instrument",instrument);field("executionTimeframe",timeframe)
+   for frame in frames {
+    guard let data=images[frame] else { continue }
+    guard let jpeg=UIImage(data:data)?.jpegData(compressionQuality:0.88) else {
+      throw ScanError.message("Could not prepare the \\(frame) screenshot. Please choose another image.")
+    }
+    append("--\\(boundary)\\r\\nContent-Disposition: form-data; name=\\"\\(frame)\\"; filename=\\"\\(frame.lowercased()).jpg\\"\\r\\nContent-Type: image/jpeg\\r\\n\\r\\n")
+    body.append(jpeg)
+    append("\\r\\n")
+   }
    append("--\(boundary)--\r\n");request.httpBody=body
    let (data,response)=try await URLSession.shared.data(for:request);guard let http=response as? HTTPURLResponse else{throw ScanError.message("Invalid server response.")};guard (200..<300).contains(http.statusCode) else{throw ScanError.message(String(data:data,encoding:.utf8) ?? "Server error")}
    result=try JSONDecoder().decode(ScanResult.self,from:data);status="Analysis complete. Review the reasoning and validation warnings before making any decision."
