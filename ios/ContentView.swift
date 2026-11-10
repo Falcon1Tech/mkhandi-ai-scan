@@ -53,7 +53,7 @@ struct ContentView: View {
  private var watchlist:some View {VStack(alignment:.leading,spacing:12){eyebrow("MARKET WATCHLIST");Text("Supported assets").font(.system(size:25,weight:.black));Text("Live Deriv streaming is not yet implemented in this native iOS build; these are the supported instruments, not live quotes.").font(.system(size:12)).foregroundStyle(.white.opacity(0.65));ForEach(["Boom 1000 Index","Boom 500 Index","Volatility 75 Index","Volatility 25 (1s) Index","Crash 5000 Index","Crash 1000 Index","Gold / XAUUSD"],id:\.self){asset in HStack{Image(systemName:"chart.xyaxis.line").foregroundStyle(T.cyan);Text(asset).font(.system(size:13,weight:.bold));Spacer();Text("SUPPORTED").font(.system(size:9,weight:.black)).foregroundStyle(T.green)}.padding(12).background(T.panel).clipShape(RoundedRectangle(cornerRadius:10))}}.padding(15).background(T.card).clipShape(RoundedRectangle(cornerRadius:18))}
  private var signals:some View {VStack(alignment:.leading,spacing:12){eyebrow("SIGNAL REVIEW");Text("Latest analysis").font(.system(size:25,weight:.black));if let result{resultView(result)}else{Text("No analysis in this session yet. Open AI Deep Scan and upload the required charts.").font(.system(size:13)).foregroundStyle(.white.opacity(0.65))}}.padding(15).background(T.card).clipShape(RoundedRectangle(cornerRadius:18))}
  private var tabs:some View {HStack{tabButton("Dashboard","square.grid.2x2");tabButton("Watchlist","chart.xyaxis.line");tabButton("AI Deep Scan","brain.head.profile");tabButton("Signals","bolt.fill")}.padding(.top,8).background(T.bg)}
- private func tabButton(_ name:String,_ icon:String)->some View {Button{tab=name}{VStack(spacing:5){Image(systemName:icon).font(.system(size:16,weight:.bold));Text(name=="AI Deep Scan" ? "Deep Scan":name).font(.system(size:9,weight:.heavy))}.foregroundStyle(tab==name ? T.red:.white.opacity(0.55)).frame(maxWidth:.infinity).padding(.bottom,7)}}
+ private func tabButton(_ name:String,_ icon:String)->some View { Button { tab=name } label: { VStack(spacing:5) { Image(systemName:icon).font(.system(size:16,weight:.bold)); Text(name=="AI Deep Scan" ? "Deep Scan":name).font(.system(size:9,weight:.heavy)) }.foregroundStyle(tab==name ? T.red:.white.opacity(0.55)).frame(maxWidth:.infinity).padding(.bottom,7) }.buttonStyle(.plain) }
  private func feature(_ title:String,_ subtitle:String,_ icon:String,_ color:Color,_ action:@escaping()->Void)->some View {Button(action:action){HStack{Image(systemName:icon).font(.system(size:22)).foregroundStyle(color).frame(width:40,height:40).background(color.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius:9));VStack(alignment:.leading,spacing:4){Text(title).font(.system(size:14,weight:.black)).foregroundStyle(.white);Text(subtitle).font(.system(size:11)).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.leading)};Spacer();Image(systemName:"chevron.right").foregroundStyle(.white.opacity(0.4))}.padding(12).background(T.panel).clipShape(RoundedRectangle(cornerRadius:11))}.buttonStyle(.plain)}
  private func eyebrow(_ s:String)->some View {Text(s).font(.system(size:10,weight:.black)).tracking(1.4).foregroundStyle(T.red)}
  private func label(_ s:String)->some View {Text(s).font(.system(size:10,weight:.black)).tracking(0.7).foregroundStyle(T.cyan)}
@@ -68,11 +68,11 @@ struct ContentView: View {
    for frame in frames {
     guard let data=images[frame] else { continue }
     guard let jpeg=UIImage(data:data)?.jpegData(compressionQuality:0.88) else {
-      throw ScanError.message("Could not prepare the \\(frame) screenshot. Please choose another image.")
+      throw ScanError.message("Could not prepare the \(frame) screenshot. Please choose another image.")
     }
-    append("--\\(boundary)\\r\\nContent-Disposition: form-data; name=\\"\\(frame)\\"; filename=\\"\\(frame.lowercased()).jpg\\"\\r\\nContent-Type: image/jpeg\\r\\n\\r\\n")
+    append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(frame)\"; filename=\"\(frame.lowercased()).jpg\"\r\nContent-Type: image/jpeg\r\n\r\n")
     body.append(jpeg)
-    append("\\r\\n")
+    append("\r\n")
    }
    append("--\(boundary)--\r\n");request.httpBody=body
    let (data,response)=try await URLSession.shared.data(for:request);guard let http=response as? HTTPURLResponse else{throw ScanError.message("Invalid server response.")};guard (200..<300).contains(http.statusCode) else{throw ScanError.message(String(data:data,encoding:.utf8) ?? "Server error")}
